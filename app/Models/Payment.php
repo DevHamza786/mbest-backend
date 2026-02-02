@@ -48,14 +48,16 @@ class Payment extends Model
     }
 
     /**
-     * Get the payment slip URL
+     * Get the payment slip URL (full absolute URL for production)
      */
     public function getPaymentSlipUrlAttribute()
     {
         if (!$this->payment_slip_path) {
             return null;
         }
-        return Storage::url($this->payment_slip_path);
+        $path = Storage::url($this->payment_slip_path);
+        // Return full URL so frontend works in production (different domains)
+        return url($path);
     }
 
     // Scopes
