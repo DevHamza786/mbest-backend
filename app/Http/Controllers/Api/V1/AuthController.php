@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Tutor;
+use App\Models\ParentModel;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -17,7 +19,7 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
-            'role' => 'required|in:admin,tutor,student,parent',
+            'role' => 'required|in:tutor,parent', // Only allow tutor and parent registration
         ]);
 
         $user = User::create([
@@ -25,7 +27,21 @@ class AuthController extends Controller
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'],
+            'is_active' => true, // Auto-activate tutor and parent accounts
         ]);
+
+        // Create role-specific profile records
+        if ($validated['role'] === 'tutor') {
+            Tutor::create([
+                'user_id' => $user->id,
+                'is_available' => true,
+            ]);
+        } elseif ($validated['role'] === 'parent') {
+            ParentModel::create([
+                'user_id' => $user->id,
+                'relationship' => 'parent',
+            ]);
+        }
 
         $token = $user->createToken('api-token')->plainTextToken;
 

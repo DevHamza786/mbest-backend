@@ -10,7 +10,7 @@ class AdminClassController extends Controller
 {
     public function index(Request $request)
     {
-        $query = ClassModel::with(['tutor.user', 'students.user']);
+        $query = ClassModel::with(['tutor.user', 'students.user', 'packages']);
 
         // Filter by status
         if ($request->has('status')) {

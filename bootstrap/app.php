@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckRole::class,
+            'subscription.active' => \App\Http\Middleware\EnsureSubscriptionActive::class,
         ]);
         
         // Add CORS middleware to both web and api routes for broadcasting/auth

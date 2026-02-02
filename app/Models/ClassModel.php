@@ -55,5 +55,10 @@ class ClassModel extends Model
     {
         return $this->hasMany(TutoringSession::class, 'class_id');
     }
+
+    public function packages()
+    {
+        return $this->belongsToMany(Package::class, 'package_class', 'class_id', 'package_id');
+    }
 }
 

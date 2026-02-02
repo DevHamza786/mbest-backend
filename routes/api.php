@@ -38,6 +38,10 @@ use App\Http\Controllers\Api\V1\Common\NotificationController;
 use App\Http\Controllers\Api\V1\Common\ResourceController;
 use App\Http\Controllers\Api\V1\Common\ResourceRequestController;
 use App\Http\Controllers\Api\V1\Common\ProfileController;
+use App\Http\Controllers\Api\V1\Admin\AdminPackageController;
+use App\Http\Controllers\Api\V1\Admin\AdminPaymentController;
+use App\Http\Controllers\Api\V1\Parent\ParentSubscriptionController;
+use App\Http\Controllers\Api\V1\Parent\ParentStudentController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -97,6 +101,19 @@ Route::prefix('v1')->group(function () {
             Route::get('/attendance/{id}', [AdminAttendanceController::class, 'show']);
             Route::put('/attendance/{id}', [AdminAttendanceController::class, 'update']);
             Route::post('/attendance/timesheets/approve', [AdminAttendanceController::class, 'approveTimesheet']);
+            
+            // Packages
+            Route::get('/packages', [AdminPackageController::class, 'index']);
+            Route::post('/packages', [AdminPackageController::class, 'store']);
+            Route::get('/packages/{id}', [AdminPackageController::class, 'show']);
+            Route::put('/packages/{id}', [AdminPackageController::class, 'update']);
+            Route::delete('/packages/{id}', [AdminPackageController::class, 'destroy']);
+            
+            // Payments
+            Route::get('/payments', [AdminPaymentController::class, 'index']);
+            Route::get('/payments/{id}', [AdminPaymentController::class, 'show']);
+            Route::post('/payments/{id}/approve', [AdminPaymentController::class, 'approve']);
+            Route::post('/payments/{id}/reject', [AdminPaymentController::class, 'reject']);
         });
 
         // Tutor routes
@@ -193,17 +210,29 @@ Route::prefix('v1')->group(function () {
             Route::post('/questions', [StudentQuestionController::class, 'store']);
         });
 
-        // Parent routes
+        // Parent routes - Subscription routes (no subscription check)
         Route::prefix('parent')->middleware('role:parent')->group(function () {
+            // Subscription & Payment routes (accessible without active subscription)
+            Route::get('/subscription/packages', [ParentSubscriptionController::class, 'index']);
+            Route::get('/subscription/packages/{id}', [ParentSubscriptionController::class, 'show']);
+            Route::get('/subscription/my-subscription', [ParentSubscriptionController::class, 'getMySubscription']);
+            Route::post('/subscription/payment', [ParentSubscriptionController::class, 'submitPayment']);
+        });
+        
+        // Parent routes - Protected routes (require active subscription)
+        Route::prefix('parent')->middleware(['role:parent', 'subscription.active'])->group(function () {
             Route::get('/dashboard', [ParentDashboardController::class, 'index']);
             
             // Children
             Route::get('/children', [ParentChildController::class, 'index']);
             Route::get('/children/{id}/stats', [ParentChildController::class, 'stats']);
+            Route::post('/children', [ParentStudentController::class, 'store']); // Add student
             
             // Classes
             Route::get('/children/{id}/classes', [ParentClassController::class, 'index']);
+            Route::get('/children/{id}/classes/available', [ParentClassController::class, 'getAvailableClasses']);
             Route::get('/children/{childId}/classes/{classId}', [ParentClassController::class, 'show']);
+            Route::post('/children/{childId}/classes/{classId}/enroll', [ParentClassController::class, 'enroll']);
             
             // Assignments
             Route::get('/children/{id}/assignments', [ParentAssignmentController::class, 'index']);
