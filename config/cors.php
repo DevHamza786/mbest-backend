@@ -25,6 +25,8 @@ return [
         'http://127.0.0.1:5173',
         'http://127.0.0.1:8080',
         'https://mbest-lms.vercel.app',
+        'https://*.vercel.app',
+        '*', // Allow all origins for production (remove in production if too permissive)
     ],
 
     'allowed_origins_patterns' => [],
