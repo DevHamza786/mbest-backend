@@ -223,17 +223,19 @@ class TutorAssignmentController extends Controller
         ]);
 
         // Create or update grade record
-        $grade = \App\Models\Grade::updateOrCreate(
+        $assignment = $submission->assignment;
+        \App\Models\Grade::updateOrCreate(
             [
                 'student_id' => $submission->student_id,
                 'assignment_id' => $submission->assignment_id,
             ],
             [
                 'grade' => $validated['grade'],
-                'max_points' => $submission->assignment->max_points,
-                'class_id' => $submission->assignment->class_id,
-                'subject' => $submission->assignment->classModel->subject ?? 'General',
-                'graded_at' => now(),
+                'max_grade' => $assignment->max_points,
+                'class_id' => $assignment->class_id,
+                'subject' => $assignment->classModel ? ($assignment->classModel->category ?? 'General') : 'General',
+                'assessment' => $assignment->title,
+                'date' => now(),
             ]
         );
 

@@ -110,11 +110,18 @@ class StudentAssignmentController extends Controller
             ], 400);
         }
 
-        $validated = $request->validate([
-            'file' => 'required_if:assignment.submission_type,file|file|max:10240',
-            'text_submission' => 'required_if:assignment.submission_type,text|string',
-            'link_submission' => 'required_if:assignment.submission_type,link|url',
-        ]);
+        // Validate submission based on assignment's configured submission type
+        $rules = [];
+
+        if ($assignment->submission_type === 'file') {
+            $rules['file'] = 'required|file|max:10240';
+        } elseif ($assignment->submission_type === 'text') {
+            $rules['text_submission'] = 'required|string';
+        } elseif ($assignment->submission_type === 'link') {
+            $rules['link_submission'] = 'required|url';
+        }
+
+        $validated = $request->validate($rules);
 
         $submissionData = [
             'assignment_id' => $assignment->id,
@@ -125,10 +132,21 @@ class StudentAssignmentController extends Controller
 
         // Handle file submission
         if ($assignment->submission_type === 'file' && $request->hasFile('file')) {
+            // If re-submitting, delete old file if it exists
+            if ($existingSubmission && $existingSubmission->file_url) {
+                Storage::disk('public')->delete($existingSubmission->file_url);
+            }
+
             $file = $request->file('file');
-            $path = $file->store('assignments/submissions', 'public');
-            $submissionData['file_path'] = $path;
-            $submissionData['file_name'] = $file->getClientOriginalName();
+
+            // Keep original filename (optionally prefixed to avoid collisions)
+            $originalName = $file->getClientOriginalName();
+            $storedName = time() . '_' . $originalName;
+
+            $path = $file->storeAs('assignments/submissions', $storedName, 'public');
+
+            // Save stored path (includes original filename) so frontend can display it
+            $submissionData['file_url'] = $path;
         }
 
         // Handle text submission
