@@ -12,7 +12,11 @@ class ParentSubscriptionController extends Controller
 {
     public function index()
     {
-        $packages = Package::active()->orderBy('price')->get();
+        // Include class details for better package selection UI (subject, level, tutor, duration, etc.)
+        $packages = Package::active()
+            ->with(['classes.tutor.user', 'classes.schedules'])
+            ->orderBy('price')
+            ->get();
 
         return response()->json([
             'success' => true,
@@ -22,7 +26,7 @@ class ParentSubscriptionController extends Controller
 
     public function show($id)
     {
-        $package = Package::findOrFail($id);
+        $package = Package::with(['classes.tutor.user', 'classes.schedules'])->findOrFail($id);
 
         return response()->json([
             'success' => true,

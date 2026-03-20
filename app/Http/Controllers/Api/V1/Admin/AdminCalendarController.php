@@ -36,6 +36,11 @@ class AdminCalendarController extends Controller
             $query->where('subject', $request->subject);
         }
 
+        // Filter by year level
+        if ($request->has('year_level') && $request->year_level) {
+            $query->where('year_level', $request->year_level);
+        }
+
         // Filter by location
         if ($request->has('location')) {
             $query->where('location', $request->location);
@@ -163,9 +168,8 @@ class AdminCalendarController extends Controller
             ->sort()
             ->values();
 
-        // Get all tutors (teachers) who have sessions
-        $tutors = \App\Models\Tutor::whereHas('sessions')
-            ->with('user:id,name,email')
+        // Get all tutors (for session form dropdown and filters)
+        $tutors = \App\Models\Tutor::with('user:id,name,email')
             ->get()
             ->map(function ($tutor) {
                 return [
@@ -176,9 +180,8 @@ class AdminCalendarController extends Controller
             ->sortBy('name')
             ->values();
 
-        // Get all students who have sessions
-        $students = \App\Models\Student::whereHas('sessions')
-            ->with('user:id,name,email')
+        // Get all students (for session form dropdown and filters)
+        $students = \App\Models\Student::with('user:id,name,email')
             ->get()
             ->map(function ($student) {
                 return [

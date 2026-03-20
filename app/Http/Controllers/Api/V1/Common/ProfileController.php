@@ -51,23 +51,62 @@ class ProfileController extends Controller
     {
         $user = $request->user();
 
+        // Treat empty strings as null so `nullable` validations work as intended.
+        $request->merge([
+            'phone' => $request->input('phone') === '' ? null : $request->input('phone'),
+            'date_of_birth' => $request->input('date_of_birth') === '' ? null : $request->input('date_of_birth'),
+            'wwcc_number' => $request->input('wwcc_number') === '' ? null : $request->input('wwcc_number'),
+            'wwcc_expiry_date' => $request->input('wwcc_expiry_date') === '' ? null : $request->input('wwcc_expiry_date'),
+            'max_students_per_group' => $request->input('max_students_per_group') === '' ? null : $request->input('max_students_per_group'),
+        ]);
+
         $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'email' => 'sometimes|string|email|max:255|unique:users,email,' . $user->id,
-            'phone' => 'nullable|string|max:20',
-            'date_of_birth' => 'nullable|date',
+            "name" => "sometimes|string|max:255|regex:/^[A-Za-z][A-Za-z\\s.'-]*$/",
+            'email' => 'sometimes|string|email:rfc,dns|max:255|unique:users,email,' . $user->id,
+            'phone' => [
+                'nullable',
+                'string',
+                'max:20',
+                function ($attribute, $value, $fail) {
+                    if ($value === null || $value === '') return;
+                    $normalized = preg_replace('/[\s-]/', '', (string) $value);
+                    if (!preg_match('/^\+61\d{9}$/', $normalized)) {
+                        $fail('The ' . $attribute . ' must be a valid Australian number in the format +61XXXXXXXXX.');
+                    }
+                },
+            ],
+            'date_of_birth' => 'nullable|date|before_or_equal:today',
             'address' => 'nullable|string',
             'avatar' => 'nullable|image|max:2048',
-            'password' => 'sometimes|string|min:8|confirmed',
+            'password' => [
+                'sometimes',
+                'string',
+                'min:8',
+                'confirmed',
+                // Require: upper/lowercase, number, and special character.
+                'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/',
+            ],
             // Tutor-specific fields
-            'department' => 'nullable|string|max:255',
             'specialization' => 'nullable|array',
             'specialization.*' => 'string|max:255',
+            'subject_year_mapping' => 'nullable|array',
+            'subject_year_mapping.*' => 'array',
+            'subject_year_mapping.*.*' => 'regex:/^(?:[1-9]|1[0-2])$/',
             'hourly_rate' => 'nullable|numeric|min:0',
             'qualifications' => 'nullable|string',
             'experience_years' => 'nullable|integer|min:0',
             'bio' => 'nullable|string',
+
+            // WWCC + group size limits (tutor onboarding)
+            'wwcc_number' => 'nullable|string|max:100',
+            'wwcc_expiry_date' => 'nullable|date|after_or_equal:today',
+            'max_students_per_group' => 'nullable|integer|min:1|max:100',
         ]);
+
+        // Normalize phone inputs (strip spaces/dashes) before storing.
+        if (isset($validated['phone']) && $validated['phone'] !== null) {
+            $validated['phone'] = preg_replace('/[\s-]/', '', (string) $validated['phone']);
+        }
 
         // Handle avatar upload
         if ($request->hasFile('avatar')) {
@@ -87,7 +126,17 @@ class ProfileController extends Controller
 
         // Separate user fields from tutor fields
         $userFields = ['name', 'email', 'phone', 'date_of_birth', 'address', 'avatar', 'password'];
-        $tutorFields = ['department', 'specialization', 'hourly_rate', 'qualifications', 'experience_years', 'bio'];
+        $tutorFields = [
+            'specialization',
+            'subject_year_mapping',
+            'hourly_rate',
+            'qualifications',
+            'experience_years',
+            'bio',
+            'wwcc_number',
+            'wwcc_expiry_date',
+            'max_students_per_group',
+        ];
         
         $userData = array_intersect_key($validated, array_flip($userFields));
         $tutorData = array_intersect_key($validated, array_flip($tutorFields));
@@ -172,7 +221,14 @@ class ProfileController extends Controller
 
         $validated = $request->validate([
             'current_password' => 'required|string',
-            'password' => 'required|string|min:8|confirmed',
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'confirmed',
+                // Require: upper/lowercase, number, and special character.
+                'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/',
+            ],
         ]);
 
         // Verify current password

@@ -37,5 +37,10 @@ class Assignment extends Model
     {
         return $this->hasMany(AssignmentSubmission::class);
     }
+
+    public function assignmentFiles()
+    {
+        return $this->hasMany(AssignmentFile::class, 'assignment_id');
+    }
 }
 

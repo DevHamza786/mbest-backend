@@ -7,6 +7,7 @@ use App\Models\Student;
 use App\Models\TutoringSession;
 use App\Models\ParentModel;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class ParentLessonHistoryController extends Controller
 {
@@ -27,7 +28,7 @@ class ParentLessonHistoryController extends Controller
         $query = TutoringSession::whereHas('students', function ($q) use ($child) {
             $q->where('students.id', $child->id);
         })
-        ->with(['teacher.user', 'classModel', 'studentNotes' => function ($q) use ($child) {
+        ->with(['teacher.user', 'classModel', 'sessionFiles', 'studentNotes' => function ($q) use ($child) {
             $q->where('student_id', $child->id);
         }]);
 
@@ -70,6 +71,14 @@ class ParentLessonHistoryController extends Controller
                           ->orderBy('start_time', 'desc')
                           ->paginate($perPage);
 
+        $sessions->getCollection()->each(function ($session) {
+            $session->sessionFiles?->each(function ($file) {
+                if (!empty($file->file_path)) {
+                    $file->file_url = Storage::url($file->file_path);
+                }
+            });
+        });
+
         return response()->json([
             'success' => true,
             'data' => $sessions,
@@ -96,11 +105,18 @@ class ParentLessonHistoryController extends Controller
         ->with([
             'teacher.user',
             'classModel',
+            'sessionFiles',
             'studentNotes' => function ($q) use ($child) {
                 $q->where('student_id', $child->id);
             }
         ])
         ->findOrFail($sessionId);
+
+        $session->sessionFiles?->each(function ($file) {
+            if (!empty($file->file_path)) {
+                $file->file_url = Storage::url($file->file_path);
+            }
+        });
 
         return response()->json([
             'success' => true,

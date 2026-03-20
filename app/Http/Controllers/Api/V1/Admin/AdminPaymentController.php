@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Payment;
 use App\Models\User;
 use App\Models\Package;
+use App\Models\ClassModel;
+use App\Services\StudentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -71,6 +73,41 @@ class AdminPaymentController extends Controller
                 'subscription_status' => 'active',
                 'subscription_approved_at' => now(),
             ]);
+
+            // Upgrade flow: when a parent upgrades package, auto-enroll existing students
+            // into any newly included classes (so the upgrade applies immediately).
+            $studentService = new StudentService();
+
+            $package = $payment->package->load('classes');
+            $packageClassIds = $package->classes->pluck('id')->toArray();
+
+            $students = $parent->parentModel ? $parent->parentModel->students()->get() : collect();
+            $classesById = ClassModel::whereIn('id', $packageClassIds)->get()->keyBy('id');
+
+            foreach ($students as $student) {
+                $existingClassIds = $student->classes()->pluck('classes.id')->toArray();
+
+                foreach ($packageClassIds as $classId) {
+                    if (in_array($classId, $existingClassIds, true)) continue;
+
+                    $class = $classesById->get($classId);
+                    if (!$class) continue;
+
+                    try {
+                        $studentService->enrollStudentInClass($student, $class);
+                    } catch (\Exception $e) {
+                        // Enrollment can fail if the student is already enrolled or validation rejects;
+                        // don't block approval.
+                        \Log::warning('Auto-enroll during package upgrade failed', [
+                            'payment_id' => $payment->id,
+                            'parent_id' => $parent->id,
+                            'student_id' => $student->id,
+                            'class_id' => $classId,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
 
             // Create notification for parent
             $notificationService = new \App\Services\NotificationService();

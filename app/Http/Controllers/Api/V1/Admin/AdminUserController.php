@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Tutor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -79,15 +80,42 @@ class AdminUserController extends Controller
 
     public function store(Request $request)
     {
+        // Treat empty strings as null so `nullable` validations work as intended.
+        $request->merge([
+            'phone' => $request->input('phone') === '' ? null : $request->input('phone'),
+            'date_of_birth' => $request->input('date_of_birth') === '' ? null : $request->input('date_of_birth'),
+        ]);
+
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8',
+            "name" => "required|string|max:255|regex:/^[A-Za-z][A-Za-z\\s.'-]*$/",
+            'email' => 'required|string|email:rfc,dns|max:255|unique:users',
+            // Require strong password: upper/lowercase, number, and special character.
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/',
+            ],
             'role' => 'required|in:admin,tutor,student,parent',
-            'phone' => 'nullable|string|max:20',
-            'date_of_birth' => 'nullable|date',
+            'phone' => [
+                'nullable',
+                'string',
+                'max:20',
+                function ($attribute, $value, $fail) {
+                    if ($value === null || $value === '') return;
+                    $normalized = preg_replace('/[\s-]/', '', (string) $value);
+                    if (!preg_match('/^\+61\d{9}$/', $normalized)) {
+                        $fail('The ' . $attribute . ' must be a valid Australian number in the format +61XXXXXXXXX.');
+                    }
+                },
+            ],
+            'date_of_birth' => 'nullable|date|before_or_equal:today',
             'address' => 'nullable|string',
         ]);
+
+        if (isset($validated['phone']) && $validated['phone'] !== null) {
+            $validated['phone'] = preg_replace('/[\s-]/', '', (string) $validated['phone']);
+        }
 
         $user = User::create([
             'name' => $validated['name'],
@@ -98,6 +126,14 @@ class AdminUserController extends Controller
             'date_of_birth' => $validated['date_of_birth'] ?? null,
             'address' => $validated['address'] ?? null,
         ]);
+
+        // Ensure tutor role always has a tutor profile row.
+        if ($validated['role'] === 'tutor') {
+            Tutor::firstOrCreate(
+                ['user_id' => $user->id],
+                ['is_available' => true]
+            );
+        }
 
         return response()->json([
             'success' => true,
@@ -120,13 +156,35 @@ class AdminUserController extends Controller
     {
         $user = User::findOrFail($id);
 
+        // Treat empty strings as null so `nullable` validations work as intended.
+        $request->merge([
+            'phone' => $request->input('phone') === '' ? null : $request->input('phone'),
+            'date_of_birth' => $request->input('date_of_birth') === '' ? null : $request->input('date_of_birth'),
+        ]);
+
         $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'email' => 'sometimes|string|email|max:255|unique:users,email,' . $id,
-            'password' => 'sometimes|string|min:8',
+            "name" => "sometimes|string|max:255|regex:/^[A-Za-z][A-Za-z\\s.'-]*$/",
+            'email' => 'sometimes|string|email:rfc,dns|max:255|unique:users,email,' . $id,
+            'password' => [
+                'sometimes',
+                'string',
+                'min:8',
+                'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/',
+            ],
             'role' => 'sometimes|in:admin,tutor,student,parent',
-            'phone' => 'nullable|string|max:20',
-            'date_of_birth' => 'nullable|date',
+            'phone' => [
+                'nullable',
+                'string',
+                'max:20',
+                function ($attribute, $value, $fail) {
+                    if ($value === null || $value === '') return;
+                    $normalized = preg_replace('/[\s-]/', '', (string) $value);
+                    if (!preg_match('/^\+61\d{9}$/', $normalized)) {
+                        $fail('The ' . $attribute . ' must be a valid Australian number in the format +61XXXXXXXXX.');
+                    }
+                },
+            ],
+            'date_of_birth' => 'nullable|date|before_or_equal:today',
             'address' => 'nullable|string',
             'is_active' => 'sometimes|boolean',
         ]);
@@ -135,7 +193,19 @@ class AdminUserController extends Controller
             $validated['password'] = bcrypt($validated['password']);
         }
 
+        if (isset($validated['phone']) && $validated['phone'] !== null) {
+            $validated['phone'] = preg_replace('/[\s-]/', '', (string) $validated['phone']);
+        }
+
         $user->update($validated);
+
+        // If the user is (now) a tutor, ensure the tutor profile row exists.
+        if (($validated['role'] ?? $user->role) === 'tutor') {
+            Tutor::firstOrCreate(
+                ['user_id' => $user->id],
+                ['is_available' => true]
+            );
+        }
 
         return response()->json([
             'success' => true,
@@ -167,6 +237,23 @@ class AdminUserController extends Controller
         return response()->json([
             'success' => true,
             'data' => $stats,
+        ]);
+    }
+
+    /**
+     * Get tutor by id (for invoice: hourly_rate)
+     */
+    public function getTutor($id)
+    {
+        $tutor = Tutor::with('user:id,name,email')->findOrFail($id);
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $tutor->id,
+                'user_id' => $tutor->user_id,
+                'hourly_rate' => $tutor->hourly_rate,
+                'user' => $tutor->user,
+            ],
         ]);
     }
 }

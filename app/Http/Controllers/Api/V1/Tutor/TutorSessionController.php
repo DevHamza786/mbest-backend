@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api\V1\Tutor;
 use App\Http\Controllers\Controller;
 use App\Models\Tutor;
 use App\Models\TutoringSession;
+use App\Models\TutoringSessionFile;
 use App\Models\StudentNote;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 class TutorSessionController extends Controller
 {
@@ -43,7 +45,7 @@ class TutorSessionController extends Controller
         
         // Eager load relationships (this shouldn't filter results, but load them)
         // Check if class_id column exists before eager loading classModel
-        $relationships = ['students.user', 'studentNotes'];
+        $relationships = ['students.user', 'studentNotes', 'sessionFiles'];
         if (Schema::hasColumn('tutoring_sessions', 'class_id')) {
             $relationships[] = 'classModel';
         }
@@ -65,6 +67,11 @@ class TutorSessionController extends Controller
         // Subject filter
         if ($request->has('subject')) {
             $query->where('subject', $request->subject);
+        }
+
+        // Year level filter (matches sessions.year_level)
+        if ($request->has('year_level') && $request->year_level) {
+            $query->where('year_level', $request->year_level);
         }
 
         // Student filter
@@ -133,6 +140,15 @@ class TutorSessionController extends Controller
                 'eloquent_sql' => $eloquentSql,
                 'eloquent_bindings' => $eloquentBindings,
             ]);
+
+            // Add public URLs for attached materials
+            $sessions->each(function ($session) {
+                $session->sessionFiles?->each(function ($file) {
+                    if (!empty($file->file_path)) {
+                        $file->file_url = Storage::url($file->file_path);
+                    }
+                });
+            });
             
             return response()->json([
                 'success' => true,
@@ -158,6 +174,15 @@ class TutorSessionController extends Controller
             'tutor_id' => $tutor->id,
         ]);
 
+        // Add public URLs for attached materials
+        $sessions->getCollection()->each(function ($session) {
+            $session->sessionFiles?->each(function ($file) {
+                if (!empty($file->file_path)) {
+                    $file->file_url = Storage::url($file->file_path);
+                }
+            });
+        });
+
         return response()->json([
             'success' => true,
             'data' => $sessions,
@@ -180,6 +205,8 @@ class TutorSessionController extends Controller
             'location' => 'required|in:online,centre,home',
             'session_type' => 'required|in:1:1,group',
             'class_id' => 'nullable|exists:classes,id',
+            'materials' => 'nullable|array',
+            'materials.*' => 'file|max:10240|mimes:pdf,doc,docx,txt,rtf,ppt,pptx,xls,xlsx,jpg,jpeg,png',
         ]);
 
         // Verify class belongs to tutor if provided
@@ -212,9 +239,34 @@ class TutorSessionController extends Controller
         // Attach students
         $session->students()->attach($validated['student_ids']);
 
+        // Store optional tutor-provided materials for the session
+        if ($request->hasFile('materials')) {
+            foreach ((array) $request->file('materials') as $material) {
+                if (!$material) {
+                    continue;
+                }
+
+                $storedPath = $material->store('tutoring_session_materials', 'public');
+
+                $session->sessionFiles()->create([
+                    'file_name' => $material->getClientOriginalName(),
+                    'file_path' => $storedPath,
+                    'mime_type' => $material->getClientMimeType(),
+                    'file_size' => $material->getSize(),
+                ]);
+            }
+        }
+
+        $session->load(['students.user', 'sessionFiles']);
+        $session->sessionFiles?->each(function ($file) {
+            if (!empty($file->file_path)) {
+                $file->file_url = Storage::url($file->file_path);
+            }
+        });
+
         return response()->json([
             'success' => true,
-            'data' => $session->load(['students.user']),
+            'data' => $session,
             'message' => 'Session created successfully',
         ], 201);
     }
@@ -225,8 +277,14 @@ class TutorSessionController extends Controller
         $tutor = Tutor::where('user_id', $user->id)->firstOrFail();
 
         $session = TutoringSession::where('teacher_id', $tutor->id)
-            ->with(['students.user', 'studentNotes.student.user', 'classModel'])
+            ->with(['students.user', 'studentNotes.student.user', 'classModel', 'sessionFiles'])
             ->findOrFail($id);
+
+        $session->sessionFiles?->each(function ($file) {
+            if (!empty($file->file_path)) {
+                $file->file_url = Storage::url($file->file_path);
+            }
+        });
 
         return response()->json([
             'success' => true,
@@ -271,8 +329,72 @@ class TutorSessionController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $session->load(['students.user']),
+            'data' => tap($session->load(['students.user', 'sessionFiles']), function ($loaded) {
+                $loaded->sessionFiles?->each(function ($file) {
+                    if (!empty($file->file_path)) {
+                        $file->file_url = Storage::url($file->file_path);
+                    }
+                });
+            }),
             'message' => 'Session updated successfully',
+        ]);
+    }
+
+    public function proposeReschedule(Request $request, $id)
+    {
+        $user = $request->user();
+        $tutor = Tutor::where('user_id', $user->id)->firstOrFail();
+
+        $originalSession = TutoringSession::where('teacher_id', $tutor->id)->findOrFail($id);
+
+        $validated = $request->validate([
+            'proposed_date' => 'required|date',
+            'proposed_start_time' => 'required|date_format:H:i',
+            'proposed_end_time' => 'required|date_format:H:i|after:proposed_start_time',
+        ]);
+
+        $newSession = TutoringSession::create([
+            'date' => $validated['proposed_date'],
+            'start_time' => $validated['proposed_start_time'],
+            'end_time' => $validated['proposed_end_time'],
+            'teacher_id' => $tutor->id,
+            'class_id' => $originalSession->class_id,
+            'subject' => $originalSession->subject,
+            'year_level' => $originalSession->year_level,
+            'location' => $originalSession->location,
+            'session_type' => $originalSession->session_type,
+            'status' => 'rescheduled',
+            // Notes/resources are meant for the completed session; keep them empty for the new proposal.
+            'lesson_note' => null,
+            'topics_taught' => null,
+            'homework_resources' => null,
+            'attendance_marked' => false,
+            'ready_for_invoicing' => false,
+            'color' => $originalSession->color,
+        ]);
+
+        // Copy students to the new session
+        $studentIds = $originalSession->students()->pluck('students.id')->toArray();
+        if (!empty($studentIds)) {
+            $newSession->students()->attach($studentIds);
+        }
+
+        // Mark the original session as unavailable (teacher couldn't attend)
+        $originalSession->update([
+            'status' => 'unavailable',
+        ]);
+
+        $newSession->load(['students.user', 'sessionFiles']);
+        $newSession->sessionFiles?->each(function ($file) {
+            if (!empty($file->file_path)) {
+                $file->file_url = Storage::url($file->file_path);
+            }
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $newSession,
+            'message' => 'Reschedule proposed successfully',
         ]);
     }
 

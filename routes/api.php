@@ -62,6 +62,7 @@ Route::prefix('v1')->group(function () {
             // Users management
             Route::get('/users', [AdminUserController::class, 'index']);
             Route::get('/users/stats', [AdminUserController::class, 'stats']);
+            Route::get('/tutors/{id}', [AdminUserController::class, 'getTutor']);
             Route::post('/users', [AdminUserController::class, 'store']);
             Route::get('/users/{id}', [AdminUserController::class, 'show']);
             Route::put('/users/{id}', [AdminUserController::class, 'update']);
@@ -76,6 +77,7 @@ Route::prefix('v1')->group(function () {
             
             // Billing
             Route::prefix('billing')->group(function () {
+                Route::get('/package-stats', [AdminBillingController::class, 'packageStats']);
                 Route::get('/invoices', [AdminBillingController::class, 'index']);
                 Route::post('/invoices', [AdminBillingController::class, 'store']);
                 Route::get('/invoices/{id}', [AdminBillingController::class, 'show']);
@@ -133,6 +135,7 @@ Route::prefix('v1')->group(function () {
             Route::delete('/sessions/{id}', [TutorSessionController::class, 'destroy']);
             Route::post('/sessions/{id}/notes', [TutorSessionController::class, 'addNotes']);
             Route::post('/sessions/{id}/attendance', [TutorSessionController::class, 'markAttendance']);
+            Route::post('/sessions/{id}/propose-reschedule', [TutorSessionController::class, 'proposeReschedule']);
             
             // Assignments
             Route::get('/assignments', [TutorAssignmentController::class, 'index']);
@@ -208,6 +211,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/questions', [StudentQuestionController::class, 'index']);
             Route::get('/questions/{id}', [StudentQuestionController::class, 'show']);
             Route::post('/questions', [StudentQuestionController::class, 'store']);
+            Route::put('/questions/{id}/status', [StudentQuestionController::class, 'updateStatus']);
         });
 
         // Parent routes - Subscription routes (no subscription check)

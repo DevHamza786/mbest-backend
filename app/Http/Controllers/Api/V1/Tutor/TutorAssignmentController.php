@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api\V1\Tutor;
 use App\Http\Controllers\Controller;
 use App\Models\Tutor;
 use App\Models\Assignment;
+use App\Models\AssignmentFile;
 use App\Models\AssignmentSubmission;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class TutorAssignmentController extends Controller
 {
@@ -98,11 +100,14 @@ class TutorAssignmentController extends Controller
             'description' => 'nullable|string',
             'instructions' => 'nullable|string',
             'class_id' => 'nullable|exists:classes,id',
-            'due_date' => 'required|date',
+            // Prevent setting due_date in the future.
+            'due_date' => 'required|date|before_or_equal:today',
             'max_points' => 'required|integer|min:1',
             'submission_type' => 'required|in:file,text,link',
             'allowed_file_types' => 'nullable|array',
             'status' => 'sometimes|in:draft,published,archived',
+            'materials' => 'nullable|array',
+            'materials.*' => 'file|max:10240|mimes:pdf,doc,docx,txt,rtf,ppt,pptx,xls,xlsx,jpg,jpeg,png',
         ]);
 
         $assignment = Assignment::create([
@@ -118,9 +123,33 @@ class TutorAssignmentController extends Controller
             'status' => $validated['status'] ?? 'draft',
         ]);
 
+        // Store optional tutor-provided assignment materials
+        if ($request->hasFile('materials')) {
+            foreach ((array) $request->file('materials') as $material) {
+                if (!$material) {
+                    continue;
+                }
+
+                $storedPath = $material->store('assignment_materials', 'public');
+
+                $assignment->assignmentFiles()->create([
+                    'file_name' => $material->getClientOriginalName(),
+                    'file_path' => $storedPath,
+                    'mime_type' => $material->getClientMimeType(),
+                    'file_size' => $material->getSize(),
+                ]);
+            }
+        }
+
         return response()->json([
             'success' => true,
-            'data' => $assignment->load(['classModel', 'submissions']),
+            'data' => tap($assignment->load(['classModel', 'submissions', 'assignmentFiles']), function ($loaded) {
+                $loaded->assignmentFiles?->each(function ($file) {
+                    if (!empty($file->file_path)) {
+                        $file->file_url = Storage::url($file->file_path);
+                    }
+                });
+            }),
             'message' => 'Assignment created successfully',
         ], 201);
     }
@@ -131,8 +160,23 @@ class TutorAssignmentController extends Controller
         $tutor = Tutor::where('user_id', $user->id)->firstOrFail();
 
         $assignment = Assignment::where('tutor_id', $tutor->id)
-            ->with(['classModel', 'submissions.student.user'])
+            ->with(['classModel', 'submissions.student.user', 'assignmentFiles'])
             ->findOrFail($id);
+
+        // Ensure file links are valid URLs for the frontend.
+        $assignment->assignmentFiles?->each(function ($file) {
+            if (!empty($file->file_path)) {
+                $file->file_url = Storage::url($file->file_path);
+            }
+        });
+
+        // Ensure file links are valid URLs for the frontend.
+        // Stored file_url values are relative paths on the `public` disk.
+        $assignment->submissions->each(function ($submission) {
+            if (!empty($submission->file_url)) {
+                $submission->file_url = Storage::url($submission->file_url);
+            }
+        });
 
         // Transform assignment data for frontend
         $assignmentData = $assignment->toArray();
@@ -157,18 +201,46 @@ class TutorAssignmentController extends Controller
             'description' => 'nullable|string',
             'instructions' => 'nullable|string',
             'class_id' => 'nullable|exists:classes,id',
-            'due_date' => 'sometimes|date',
+            'due_date' => 'sometimes|date|before_or_equal:today',
             'max_points' => 'sometimes|integer|min:1',
             'submission_type' => 'sometimes|in:file,text,link',
             'allowed_file_types' => 'nullable|array',
             'status' => 'sometimes|in:draft,published,archived',
+            'materials' => 'nullable|array',
+            'materials.*' => 'file|max:10240|mimes:pdf,doc,docx,txt,rtf,ppt,pptx,xls,xlsx,jpg,jpeg,png',
         ]);
 
         $assignment->update($validated);
 
+        // Replace optional tutor-provided assignment materials
+        if ($request->hasFile('materials')) {
+            $assignment->assignmentFiles()->delete();
+
+            foreach ((array) $request->file('materials') as $material) {
+                if (!$material) {
+                    continue;
+                }
+
+                $storedPath = $material->store('assignment_materials', 'public');
+
+                $assignment->assignmentFiles()->create([
+                    'file_name' => $material->getClientOriginalName(),
+                    'file_path' => $storedPath,
+                    'mime_type' => $material->getClientMimeType(),
+                    'file_size' => $material->getSize(),
+                ]);
+            }
+        }
+
         return response()->json([
             'success' => true,
-            'data' => $assignment->load(['classModel']),
+            'data' => tap($assignment->load(['classModel', 'assignmentFiles']), function ($loaded) {
+                $loaded->assignmentFiles?->each(function ($file) {
+                    if (!empty($file->file_path)) {
+                        $file->file_url = Storage::url($file->file_path);
+                    }
+                });
+            }),
             'message' => 'Assignment updated successfully',
         ]);
     }
@@ -194,6 +266,13 @@ class TutorAssignmentController extends Controller
 
         $assignment = Assignment::where('tutor_id', $tutor->id)->findOrFail($id);
         $submissions = $assignment->submissions()->with('student.user')->orderBy('submitted_at', 'desc')->get();
+
+        // Ensure file links are valid URLs for the frontend.
+        $submissions->each(function ($submission) {
+            if (!empty($submission->file_url)) {
+                $submission->file_url = Storage::url($submission->file_url);
+            }
+        });
 
         return response()->json([
             'success' => true,

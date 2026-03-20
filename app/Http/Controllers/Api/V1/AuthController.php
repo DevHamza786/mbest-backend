@@ -16,9 +16,17 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
-            'password' => 'required|string|min:8|confirmed',
+            "name" => "required|string|max:255|regex:/^[A-Za-z][A-Za-z\\s.'-]*$/",
+            // Use RFC + DNS validation to reject invalid domains (ex: made-up TLDs like ".comm")
+            'email' => 'required|string|email:rfc,dns|max:255|unique:users',
+            // Require: upper/lowercase, number, and special character.
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                'confirmed',
+                'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/',
+            ],
             'role' => 'required|in:tutor,parent', // Only allow tutor and parent registration
         ]);
 

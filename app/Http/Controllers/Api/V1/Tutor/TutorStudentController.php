@@ -9,6 +9,7 @@ use App\Models\Grade;
 use App\Models\ClassModel;
 use App\Models\Assignment;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class TutorStudentController extends Controller
 {
@@ -45,11 +46,14 @@ class TutorStudentController extends Controller
 
         // Add additional stats for each student
         $students->getCollection()->transform(function ($student) use ($tutor) {
+            // overall_grade is expected by the frontend as a percentage.
+            // Compute avg(grade / max_grade * 100) to avoid mixing raw scores with percentages.
             $student->overall_grade = Grade::where('student_id', $student->id)
                 ->whereHas('assignment', function ($q) use ($tutor) {
                     $q->where('tutor_id', $tutor->id);
                 })
-                ->avg('grade') ?? 0;
+                ->selectRaw('AVG((grade / NULLIF(max_grade, 0)) * 100) as avg_percent')
+                ->value('avg_percent') ?? 0;
 
             $student->total_assignments = $student->assignments()
                 ->whereHas('assignment', function ($q) use ($tutor) {
@@ -87,11 +91,13 @@ class TutorStudentController extends Controller
         ->findOrFail($id);
 
         // Add detailed stats
+        // overall_grade is expected by the frontend as a percentage.
         $student->overall_grade = Grade::where('student_id', $student->id)
             ->whereHas('assignment', function ($q) use ($tutor) {
                 $q->where('tutor_id', $tutor->id);
             })
-            ->avg('grade') ?? 0;
+            ->selectRaw('AVG((grade / NULLIF(max_grade, 0)) * 100) as avg_percent')
+            ->value('avg_percent') ?? 0;
 
         $student->total_assignments = $student->assignments()
             ->whereHas('assignment', function ($q) use ($tutor) {

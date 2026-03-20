@@ -52,9 +52,14 @@ class AdminClassController extends Controller
             'capacity' => 'nullable|integer|min:1',
             'credits' => 'nullable|integer',
             'duration' => 'nullable|string|max:50',
+            'status' => 'sometimes|in:draft,active,archived',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after:start_date',
         ]);
+
+        if (array_key_exists('status', $validated)) {
+            $validated['status'] = $this->mapClassStatusToDb($validated['status']);
+        }
 
         $class = ClassModel::create($validated);
 
@@ -102,10 +107,14 @@ class AdminClassController extends Controller
             'capacity' => 'nullable|integer|min:1',
             'credits' => 'nullable|integer',
             'duration' => 'nullable|string|max:50',
-            'status' => 'sometimes|in:active,inactive,completed',
+            'status' => 'sometimes|in:draft,active,archived',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after:start_date',
         ]);
+
+        if (isset($validated['status'])) {
+            $validated['status'] = $this->mapClassStatusToDb($validated['status']);
+        }
 
         $class->update($validated);
 
@@ -114,6 +123,18 @@ class AdminClassController extends Controller
             'data' => $class->load(['tutor.user', 'students.user']),
             'message' => 'Class updated successfully',
         ]);
+    }
+
+    /**
+     * Map UI status (draft, active, archived) to DB enum (inactive, active, completed).
+     */
+    private function mapClassStatusToDb(?string $status): string
+    {
+        return match ($status) {
+            'draft' => 'inactive',
+            'archived' => 'completed',
+            default => 'active',
+        };
     }
 
     public function destroy($id)

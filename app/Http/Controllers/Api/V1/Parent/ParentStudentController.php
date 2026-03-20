@@ -19,18 +19,68 @@ class ParentStudentController extends Controller
     {
         $user = $request->user();
 
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users,email',
-            'password' => 'required|string|min:8',
-            'grade' => 'nullable|string|max:50',
-            'school' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:20',
-            'date_of_birth' => 'nullable|date',
-            'address' => 'nullable|string',
-            'emergency_contact_name' => 'nullable|string|max:255',
-            'emergency_contact_phone' => 'nullable|string|max:20',
+        // Treat empty strings as null so `nullable` validations work as intended.
+        $request->merge([
+            'phone' => $request->input('phone') === '' ? null : $request->input('phone'),
+            'date_of_birth' => $request->input('date_of_birth') === '' ? null : $request->input('date_of_birth'),
+            'emergency_contact_phone' => $request->input('emergency_contact_phone') === '' ? null : $request->input('emergency_contact_phone'),
+            'grade' => $request->input('grade') === '' ? null : $request->input('grade'),
         ]);
+
+        $validated = $request->validate([
+            "name" => "required|string|max:255|regex:/^[A-Za-z][A-Za-z\\s.'-]*$/",
+            'email' => 'required|string|email:rfc,dns|max:255|unique:users,email',
+            'password' => [
+                'required',
+                'string',
+                'min:8',
+                // Require: upper/lowercase, number, and special character.
+                'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]+$/',
+            ],
+            'grade' => [
+                'nullable',
+                'string',
+                'max:50',
+                // Year level format like "Year 10".
+                'regex:/^Year (?:[1-9]|1[0-2])$/',
+            ],
+            'school' => 'nullable|string|max:255',
+            'phone' => [
+                'nullable',
+                'string',
+                'max:20',
+                function ($attribute, $value, $fail) {
+                    if ($value === null || $value === '') return;
+                    $normalized = preg_replace('/[\s-]/', '', (string) $value);
+                    if (!preg_match('/^\+61\d{9}$/', $normalized)) {
+                        $fail('The ' . $attribute . ' must be a valid Australian number in the format +61XXXXXXXXX.');
+                    }
+                },
+            ],
+            'date_of_birth' => 'nullable|date|before_or_equal:today',
+            'address' => 'nullable|string',
+            "emergency_contact_name" => "nullable|string|max:255|regex:/^[A-Za-z][A-Za-z\\s.'-]*$/",
+            'emergency_contact_phone' => [
+                'nullable',
+                'string',
+                'max:20',
+                function ($attribute, $value, $fail) {
+                    if ($value === null || $value === '') return;
+                    $normalized = preg_replace('/[\s-]/', '', (string) $value);
+                    if (!preg_match('/^\+61\d{9}$/', $normalized)) {
+                        $fail('The ' . $attribute . ' must be a valid Australian number in the format +61XXXXXXXXX.');
+                    }
+                },
+            ],
+        ]);
+
+        // Normalize phone inputs (strip spaces/dashes) before storing.
+        if (isset($validated['phone']) && $validated['phone'] !== null) {
+            $validated['phone'] = preg_replace('/[\s-]/', '', (string) $validated['phone']);
+        }
+        if (isset($validated['emergency_contact_phone']) && $validated['emergency_contact_phone'] !== null) {
+            $validated['emergency_contact_phone'] = preg_replace('/[\s-]/', '', (string) $validated['emergency_contact_phone']);
+        }
 
         try {
             $student = $this->studentService->createStudentForParent($user, $validated);

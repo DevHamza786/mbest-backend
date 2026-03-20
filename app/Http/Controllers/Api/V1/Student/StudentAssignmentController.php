@@ -100,13 +100,24 @@ class StudentAssignmentController extends Controller
             ->first();
 
         // Check if due date has passed
-        $isPastDue = $assignment->due_date < now();
+        // due_date is stored as a datetime (usually at 00:00 when using date-only input).
+        // Treat it as "past due" only after the due date ends.
+        $isPastDue = $assignment->due_date->lt(now()->startOfDay());
+
+    // If the tutor already graded this submission, the student must not be able to edit it.
+    $isGraded = $existingSubmission && (
+        $existingSubmission->status === 'graded' ||
+        $existingSubmission->grade !== null
+    );
         
-        // If submission exists and due date passed, don't allow editing
-        if ($existingSubmission && $isPastDue) {
+    // If submission exists and due date passed, don't allow editing
+    // Also block edits after grading even if due_date hasn't passed yet.
+    if ($existingSubmission && ($isPastDue || $isGraded)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Submission closed. Cannot edit after due date.',
+            'message' => $isGraded
+                ? 'Submission graded. Cannot edit after grading.'
+                : 'Submission closed. Cannot edit after due date.',
             ], 400);
         }
 
@@ -115,6 +126,7 @@ class StudentAssignmentController extends Controller
 
         if ($assignment->submission_type === 'file') {
             $rules['file'] = 'required|file|max:10240';
+            $rules['student_comment'] = 'nullable|string|max:1000';
         } elseif ($assignment->submission_type === 'text') {
             $rules['text_submission'] = 'required|string';
         } elseif ($assignment->submission_type === 'link') {
@@ -129,6 +141,11 @@ class StudentAssignmentController extends Controller
             'status' => 'submitted',
             'submitted_at' => now(),
         ];
+
+        if ($assignment->submission_type === 'file') {
+            $comment = $validated['student_comment'] ?? null;
+            $submissionData['student_comment'] = ($comment !== '' ? $comment : null);
+        }
 
         // Handle file submission
         if ($assignment->submission_type === 'file' && $request->hasFile('file')) {

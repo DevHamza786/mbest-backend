@@ -25,7 +25,7 @@ class StudentDashboardController extends Controller
                 $q->where('students.id', $student->id);
             })
             ->where('status', 'published')
-            ->where('due_date', '>=', now())
+            ->where('due_date', '>=', now()->startOfDay())
             ->whereDoesntHave('submissions', function ($q) use ($student) {
                 $q->where('student_id', $student->id);
             })

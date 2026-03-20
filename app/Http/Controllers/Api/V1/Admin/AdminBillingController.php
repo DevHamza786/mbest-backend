@@ -4,10 +4,47 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
+use App\Models\Package;
+use App\Models\Payment;
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class AdminBillingController extends Controller
 {
+    /**
+     * Get billing overview: active packages, students per package, revenue per package
+     */
+    public function packageStats(Request $request)
+    {
+        $packages = Package::where('is_active', true)->get();
+
+        $stats = $packages->map(function ($package) {
+            $revenue = Payment::where('package_id', $package->id)
+                ->where('status', 'approved')
+                ->sum('amount');
+            $activeStudents = User::where('package_id', $package->id)
+                ->where('subscription_status', 'active')
+                ->sum('current_student_count');
+
+            return [
+                'id' => $package->id,
+                'name' => $package->name,
+                'price' => $package->price,
+                'active_students' => (int) $activeStudents,
+                'revenue' => (float) $revenue,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'packages' => $stats,
+                'total_revenue_from_packages' => $stats->sum('revenue'),
+                'total_active_students' => $stats->sum('active_students'),
+            ],
+        ]);
+    }
+
     public function index(Request $request)
     {
         $query = Invoice::with(['student.user', 'parent', 'tutor.user', 'items']);
@@ -36,7 +73,13 @@ class AdminBillingController extends Controller
         }
 
         $perPage = $request->get('per_page', 15);
-        $invoices = $query->orderBy('issue_date', 'desc')->paginate($perPage);
+        $sortBy = $request->get('sort_by', 'created_at');
+        $order = $request->get('order', 'desc');
+        $allowedSort = ['created_at', 'issue_date', 'due_date', 'amount'];
+        if (!in_array($sortBy, $allowedSort)) {
+            $sortBy = 'created_at';
+        }
+        $invoices = $query->orderBy($sortBy, $order === 'asc' ? 'asc' : 'desc')->paginate($perPage);
 
         return response()->json([
             'success' => true,

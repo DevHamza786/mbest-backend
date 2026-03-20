@@ -47,5 +47,10 @@ class TutoringSession extends Model
     {
         return $this->hasMany(StudentNote::class, 'session_id');
     }
+
+    public function sessionFiles()
+    {
+        return $this->hasMany(TutoringSessionFile::class, 'session_id');
+    }
 }
 

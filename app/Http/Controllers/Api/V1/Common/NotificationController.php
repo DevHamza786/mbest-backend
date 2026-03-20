@@ -49,7 +49,10 @@ class NotificationController extends Controller
 
         // Mark as read
         if (!$notification->is_read) {
-            $notification->update(['is_read' => true]);
+            $notification->update([
+                'is_read' => true,
+                'read_at' => now(),
+            ]);
         }
 
         return response()->json([
@@ -65,7 +68,10 @@ class NotificationController extends Controller
         $notification = Notification::where('user_id', $user->id)
             ->findOrFail($id);
 
-        $notification->update(['is_read' => true]);
+        $notification->update([
+            'is_read' => true,
+            'read_at' => now(),
+        ]);
 
         return response()->json([
             'success' => true,
@@ -111,7 +117,10 @@ class NotificationController extends Controller
 
         Notification::where('user_id', $user->id)
             ->where('is_read', false)
-            ->update(['is_read' => true]);
+            ->update([
+                'is_read' => true,
+                'read_at' => now(),
+            ]);
 
         return response()->json([
             'success' => true,

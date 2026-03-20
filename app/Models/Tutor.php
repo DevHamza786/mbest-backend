@@ -11,15 +11,18 @@ class Tutor extends Model
 
     protected $fillable = [
         'user_id', 'department', 'specialization', 'hourly_rate',
-        'bio', 'qualifications', 'experience_years', 'is_available'
+        'subject_year_mapping', 'bio', 'qualifications', 'experience_years', 'is_available',
+        'wwcc_number', 'wwcc_expiry_date', 'max_students_per_group'
     ];
 
     protected function casts(): array
     {
         return [
             'specialization' => 'array',
+            'subject_year_mapping' => 'array',
             'hourly_rate' => 'decimal:2',
             'is_available' => 'boolean',
+            'wwcc_expiry_date' => 'date',
         ];
     }
 

@@ -80,22 +80,31 @@ class StudentQuestionController extends Controller
             ], 422);
         }
 
-        // Determine tutor_id if not provided
+        $assignmentId = $request->assignment_id;
+        $classId = $request->class_id;
+
+        // Determine tutor_id if not provided.
+        // This is required so that "ask outside assignments" still reaches a tutor.
         $tutorId = $request->tutor_id;
-        if (!$tutorId && $request->assignment_id) {
-            $assignment = \App\Models\Assignment::find($request->assignment_id);
+        if (!$tutorId && $assignmentId) {
+            $assignment = \App\Models\Assignment::find($assignmentId);
             $tutorId = $assignment?->tutor_id;
         }
-        if (!$tutorId && $request->class_id) {
-            $class = \App\Models\ClassModel::find($request->class_id);
+        if (!$tutorId && $classId) {
+            $class = \App\Models\ClassModel::find($classId);
             $tutorId = $class?->tutor_id;
+        }
+        if (!$tutorId) {
+            $firstClass = $student->classes()->first();
+            $tutorId = $firstClass?->tutor_id;
+            $classId = $classId ?? $firstClass?->id;
         }
 
         $question = Question::create([
             'student_id' => $student->id,
             'tutor_id' => $tutorId,
-            'assignment_id' => $request->assignment_id,
-            'class_id' => $request->class_id,
+            'assignment_id' => $assignmentId,
+            'class_id' => $classId,
             'subject' => $request->subject,
             'question' => $request->question,
             'priority' => $request->priority ?? 'medium',
@@ -124,5 +133,37 @@ class StudentQuestionController extends Controller
             'message' => 'Question submitted successfully',
             'data' => $question,
         ], 201);
+    }
+
+    public function updateStatus(Request $request, $id)
+    {
+        $user = $request->user();
+        $student = Student::where('user_id', $user->id)->firstOrFail();
+
+        $validator = Validator::make($request->all(), [
+            'status' => 'required|in:closed',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $question = Question::where('student_id', $student->id)->findOrFail($id);
+
+        $question->update([
+            'status' => 'closed',
+        ]);
+
+        $question->load(['tutor.user', 'assignment', 'classModel', 'attachments']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Question closed successfully',
+            'data' => $question,
+        ]);
     }
 }
