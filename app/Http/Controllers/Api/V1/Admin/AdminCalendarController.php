@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\TutoringSession;
+use App\Models\Invoice;
 use Illuminate\Http\Request;
+use Carbon\Carbon;
 
 class AdminCalendarController extends Controller
 {
@@ -315,14 +317,111 @@ class AdminCalendarController extends Controller
 
     public function markReadyForInvoicing(Request $request, $id)
     {
-        $session = TutoringSession::findOrFail($id);
+        // Mark the session and generate a tutor invoice so it appears in admin billing.
+        $session = TutoringSession::with(['teacher.user', 'teacher', 'students.user', 'classModel'])->findOrFail($id);
+
+        // If invoice already exists for this session, do not duplicate it.
+        $existingInvoice = null;
+        try {
+            $existingInvoice = Invoice::where('session_id', $session->id)->first();
+        } catch (\Throwable $e) {
+            // In case session_id column doesn't exist in a deployed DB, just fall back to creating one invoice.
+            $existingInvoice = null;
+        }
 
         $session->update(['ready_for_invoicing' => true]);
 
+        $tutorId = (int) ($session->teacher_id ?? $session->teacher?->id);
+        $hourlyRate = (float) ($session->teacher?->hourly_rate ?? 0);
+
+        // Use session created_at to compute issue/due dates (matches your “created date + 1 week” expectation).
+        $createdAt = $session->created_at ? Carbon::parse($session->created_at) : Carbon::now();
+        $issueDate = $createdAt->toDateString();
+        $dueDate = $createdAt->copy()->addWeek()->toDateString();
+
+        if ($existingInvoice) {
+            $sessionData = $session->load(['teacher.user', 'students.user']);
+            $sessionData->setAttribute('invoice_id', $existingInvoice->id);
+            $sessionData->setAttribute('invoice_number', $existingInvoice->invoice_number);
+            $sessionData->setAttribute('invoice_due_date', $existingInvoice->due_date);
+
+            return response()->json([
+                'success' => true,
+                'data' => $sessionData,
+                'message' => 'Session already invoiced (existing invoice returned)',
+            ]);
+        }
+
+        // Calculate duration hours from session date + times.
+        $sessionDate = $session->date instanceof Carbon ? $session->date->format('Y-m-d') : (string) $session->date;
+        $start = Carbon::parse($sessionDate . ' ' . $session->start_time);
+        $end = Carbon::parse($sessionDate . ' ' . $session->end_time);
+        $diffSeconds = $end->timestamp - $start->timestamp;
+        $durationHours = $diffSeconds > 0 ? round($diffSeconds / 3600, 2) : 0.0;
+
+        $totalAmount = round($durationHours * $hourlyRate, 2);
+
+        $firstStudent = $session->students->first();
+        $studentId = $firstStudent?->id;
+
+        // Determine parent_id from the first student’s parent relationship.
+        $parentId = null;
+        if ($firstStudent) {
+            $parent = $firstStudent->parents()->first();
+            $parentId = $parent?->id;
+        }
+
+        // Generate a unique invoice number for this tutor+issue date.
+        $sequence = Invoice::where('tutor_id', $tutorId)
+            ->whereDate('issue_date', $issueDate)
+            ->count() + 1;
+
+        $invoiceNumber = 'INV-TUTOR-' . $tutorId . '-' . Carbon::parse($issueDate)->format('Ymd') . '-' . str_pad((string)$sequence, 4, '0', STR_PAD_LEFT);
+
+        $invoice = Invoice::create([
+            'invoice_number' => $invoiceNumber,
+            'student_id' => $studentId,
+            'parent_id' => $parentId,
+            'tutor_id' => $tutorId,
+            'amount' => $totalAmount,
+            'currency' => 'USD',
+            'status' => 'pending',
+            'due_date' => $dueDate,
+            'issue_date' => $issueDate,
+            'period_start' => $sessionDate,
+            'period_end' => $sessionDate,
+            'description' => 'Tutor invoice for session',
+            'tutor_address' => null,
+            'notes' => null,
+            'session_id' => $session->id,
+        ]);
+
+        $invoice->items()->create([
+            'description' => 'Session: ' . ($session->subject ?? 'Tutoring') . ' (' . $durationHours . 'h)',
+            'amount' => $totalAmount,
+            'credits' => null,
+        ]);
+
+        // Force invoice created/updated timestamps to match session timestamps (so “Created” column aligns).
+        try {
+            $invoice->timestamps = false;
+            $invoice->created_at = $session->created_at;
+            $invoice->updated_at = $session->updated_at ?? $session->created_at;
+            $invoice->save();
+            $invoice->timestamps = true;
+        } catch (\Throwable $e) {
+            // Non-fatal: if timestamps override fails, still return the invoice.
+        }
+
+        $sessionData = $session->load(['teacher.user', 'students.user']);
+        $sessionData->setAttribute('invoice_id', $invoice->id);
+        $sessionData->setAttribute('invoice_number', $invoice->invoice_number);
+        $sessionData->setAttribute('invoice_due_date', $invoice->due_date);
+
         return response()->json([
             'success' => true,
-            'data' => $session->load(['teacher.user', 'students.user']),
-            'message' => 'Session marked ready for invoicing',
+            'data' => $sessionData,
+            'message' => 'Session marked ready for invoicing and invoice created',
         ]);
     }
 }

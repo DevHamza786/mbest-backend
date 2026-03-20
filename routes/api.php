@@ -77,6 +77,7 @@ Route::prefix('v1')->group(function () {
             
             // Billing
             Route::prefix('billing')->group(function () {
+                Route::get('/summary', [AdminBillingController::class, 'summary']);
                 Route::get('/package-stats', [AdminBillingController::class, 'packageStats']);
                 Route::get('/invoices', [AdminBillingController::class, 'index']);
                 Route::post('/invoices', [AdminBillingController::class, 'store']);

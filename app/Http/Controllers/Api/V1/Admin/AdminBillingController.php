@@ -12,6 +12,80 @@ use Illuminate\Http\Request;
 class AdminBillingController extends Controller
 {
     /**
+     * Dashboard KPIs for admin billing (aggregated from invoices + users).
+     */
+    public function summary(Request $request)
+    {
+        $totalRevenue = (float) Invoice::where('status', 'paid')->sum('amount');
+
+        $pendingBase = Invoice::where('status', 'pending');
+        $pendingAmount = (float) (clone $pendingBase)->sum('amount');
+        $pendingCount = (clone $pendingBase)->count();
+
+        $overdueBase = Invoice::where('status', 'overdue');
+        $overdueAmount = (float) (clone $overdueBase)->sum('amount');
+        $overdueCount = (clone $overdueBase)->count();
+
+        $activeStudents = User::where('role', 'student')->count();
+
+        $now = now();
+        $thisMonthStart = $now->copy()->startOfMonth();
+        $thisMonthEnd = $now->copy()->endOfMonth();
+        $lastMonthStart = $now->copy()->subMonth()->startOfMonth();
+        $lastMonthEnd = $now->copy()->subMonth()->endOfMonth();
+
+        // Month revenue: prefer paid_date; if missing, fall back to issue_date for paid invoices
+        $paidThisMonth = (float) Invoice::where('status', 'paid')
+            ->where(function ($q) use ($thisMonthStart, $thisMonthEnd) {
+                $q->whereBetween('paid_date', [$thisMonthStart, $thisMonthEnd])
+                    ->orWhere(function ($q2) use ($thisMonthStart, $thisMonthEnd) {
+                        $q2->whereNull('paid_date')
+                            ->whereBetween('issue_date', [$thisMonthStart, $thisMonthEnd]);
+                    });
+            })
+            ->sum('amount');
+
+        $paidLastMonth = (float) Invoice::where('status', 'paid')
+            ->where(function ($q) use ($lastMonthStart, $lastMonthEnd) {
+                $q->whereBetween('paid_date', [$lastMonthStart, $lastMonthEnd])
+                    ->orWhere(function ($q2) use ($lastMonthStart, $lastMonthEnd) {
+                        $q2->whereNull('paid_date')
+                            ->whereBetween('issue_date', [$lastMonthStart, $lastMonthEnd]);
+                    });
+            })
+            ->sum('amount');
+
+        $revenueChangePercent = null;
+        if ($paidLastMonth > 0) {
+            $revenueChangePercent = round((($paidThisMonth - $paidLastMonth) / $paidLastMonth) * 100, 1);
+        } elseif ($paidThisMonth > 0) {
+            $revenueChangePercent = 100.0;
+        } else {
+            $revenueChangePercent = 0.0;
+        }
+
+        $newStudentsThisMonth = User::where('role', 'student')
+            ->whereBetween('created_at', [$thisMonthStart, $thisMonthEnd])
+            ->count();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total_revenue' => $totalRevenue,
+                'pending_amount' => $pendingAmount,
+                'pending_count' => $pendingCount,
+                'overdue_amount' => $overdueAmount,
+                'overdue_count' => $overdueCount,
+                'active_students' => $activeStudents,
+                'revenue_change_percent_vs_last_month' => $revenueChangePercent,
+                'paid_revenue_this_month' => $paidThisMonth,
+                'paid_revenue_last_month' => $paidLastMonth,
+                'new_students_this_month' => $newStudentsThisMonth,
+            ],
+        ]);
+    }
+
+    /**
      * Get billing overview: active packages, students per package, revenue per package
      */
     public function packageStats(Request $request)
@@ -70,6 +144,24 @@ class AdminBillingController extends Controller
         }
         if ($request->has('date_to')) {
             $query->where('issue_date', '<=', $request->date_to);
+        }
+
+        // Search: invoice number, description, student/parent/tutor names
+        if ($request->filled('search')) {
+            $term = '%' . trim((string) $request->get('search')) . '%';
+            $query->where(function ($q) use ($term) {
+                $q->where('invoice_number', 'like', $term)
+                    ->orWhere('description', 'like', $term)
+                    ->orWhereHas('student.user', function ($uq) use ($term) {
+                        $uq->where('name', 'like', $term);
+                    })
+                    ->orWhereHas('parent', function ($pq) use ($term) {
+                        $pq->where('name', 'like', $term);
+                    })
+                    ->orWhereHas('tutor.user', function ($tq) use ($term) {
+                        $tq->where('name', 'like', $term);
+                    });
+            });
         }
 
         $perPage = $request->get('per_page', 15);
