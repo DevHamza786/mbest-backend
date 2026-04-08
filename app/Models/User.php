@@ -55,6 +55,16 @@ class User extends Authenticatable
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::saved(function (User $user) {
+            if ($user->role !== 'tutor') {
+                return;
+            }
+            $user->tutor?->syncProfileCompleteFlag($user);
+        });
+    }
+
     // Relationships
     public function tutor()
     {

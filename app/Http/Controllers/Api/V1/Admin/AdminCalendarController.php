@@ -43,9 +43,17 @@ class AdminCalendarController extends Controller
             $query->where('year_level', $request->year_level);
         }
 
-        // Filter by location
-        if ($request->has('location')) {
-            $query->where('location', $request->location);
+        // Filter by location (location_type: online|onsite, or legacy free-text match on detail)
+        if ($request->has('location') && $request->location !== '') {
+            $loc = $request->location;
+            if (in_array($loc, ['online', 'onsite'], true)) {
+                $query->where('location_type', $loc);
+            } else {
+                $query->where(function ($q) use ($loc) {
+                    $q->where('location_detail', 'like', '%'.$loc.'%')
+                        ->orWhere('location_type', 'like', '%'.$loc.'%');
+                });
+            }
         }
 
         // Search
@@ -83,12 +91,42 @@ class AdminCalendarController extends Controller
             'class_id' => 'nullable|exists:classes,id',
             'subject' => 'required|string|max:255',
             'year_level' => 'nullable|string|max:50',
-            'location' => 'required|string|max:255',
+            'location_type' => 'nullable|in:online,onsite',
+            'location_detail' => 'nullable|string|max:5000',
+            'location' => 'nullable|string|max:255', // legacy online|centre|home when location_type omitted
             'session_type' => 'required|in:1:1,group',
-            'status' => 'sometimes|in:scheduled,in-progress,completed,cancelled',
+            'status' => 'sometimes|string|max:32',
             'student_ids' => 'nullable|array',
             'student_ids.*' => 'exists:students,id',
         ]);
+
+        $allowedStatuses = ['planned', 'completed', 'cancelled', 'no-show', 'rescheduled', 'unavailable'];
+        $status = $validated['status'] ?? 'planned';
+        // Legacy UI values
+        if ($status === 'scheduled' || $status === 'in-progress') {
+            $status = 'planned';
+        }
+        if (! in_array($status, $allowedStatuses, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid status. Allowed: '.implode(', ', $allowedStatuses).' (or legacy scheduled / in-progress → planned).',
+            ], 422);
+        }
+
+        $locationType = $validated['location_type'] ?? null;
+        $locationDetail = $validated['location_detail'] ?? null;
+        if (! $locationType && ! empty($validated['location'])) {
+            $legacy = $validated['location'];
+            if (in_array($legacy, ['online', 'centre', 'home'], true)) {
+                $locationType = $legacy === 'online' ? 'online' : 'onsite';
+            }
+        }
+        if (! $locationType) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Provide location_type (online|onsite) or legacy location (online|centre|home).',
+            ], 422);
+        }
 
         $session = TutoringSession::create([
             'date' => $validated['date'],
@@ -98,9 +136,10 @@ class AdminCalendarController extends Controller
             'class_id' => $validated['class_id'] ?? null,
             'subject' => $validated['subject'],
             'year_level' => $validated['year_level'] ?? null,
-            'location' => $validated['location'],
+            'location_type' => $locationType,
+            'location_detail' => $locationDetail,
             'session_type' => $validated['session_type'],
-            'status' => $validated['status'] ?? 'scheduled',
+            'status' => $status,
         ]);
 
         // Attach students if provided
@@ -146,13 +185,8 @@ class AdminCalendarController extends Controller
             ->sort()
             ->values();
 
-        // Get all unique locations from sessions
-        $locations = TutoringSession::distinct()
-            ->whereNotNull('location')
-            ->pluck('location')
-            ->filter()
-            ->sort()
-            ->values();
+        // Filter dropdown: online vs onsite (distinct location types)
+        $locations = \Illuminate\Support\Collection::make(['online', 'onsite']);
 
         // Get all unique session types from sessions
         $sessionTypes = TutoringSession::distinct()
@@ -217,13 +251,25 @@ class AdminCalendarController extends Controller
             'end_time' => 'sometimes|date_format:H:i|after:start_time',
             'subject' => 'sometimes|string|max:255',
             'year_level' => 'nullable|string|max:50',
-            'location' => 'sometimes|in:online,centre,home',
+            'location_type' => 'sometimes|in:online,onsite',
+            'location_detail' => 'nullable|string|max:5000',
+            'location' => 'nullable|string|max:255',
             'session_type' => 'sometimes|in:1:1,group',
             'status' => 'sometimes|in:planned,completed,cancelled,no-show,rescheduled,unavailable',
             'teacher_id' => 'sometimes|exists:tutors,id',
             'student_ids' => 'sometimes|array',
             'student_ids.*' => 'exists:students,id',
         ]);
+
+        if (isset($validated['location'])) {
+            if (! isset($validated['location_type'])) {
+                $legacy = $validated['location'];
+                if (in_array($legacy, ['online', 'centre', 'home'], true)) {
+                    $validated['location_type'] = $legacy === 'online' ? 'online' : 'onsite';
+                }
+            }
+            unset($validated['location']);
+        }
 
         // Update session
         $session->update($validated);

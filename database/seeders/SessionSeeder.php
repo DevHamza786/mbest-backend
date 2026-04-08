@@ -29,7 +29,7 @@ class SessionSeeder extends Seeder
 
         $subjects = ['Mathematics', 'Physics', 'Chemistry', 'English', 'Computer Science'];
         $yearLevels = ['Year 9', 'Year 10', 'Year 11', 'Year 12'];
-        $locations = ['online', 'centre', 'home']; // Must match enum values
+        $locationModes = ['online', 'onsite'];
         $sessionTypes = ['1:1', 'group']; // Must match enum values
         $statuses = ['planned', 'completed', 'cancelled', 'no-show', 'rescheduled']; // Must match enum values
         $colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
@@ -61,6 +61,7 @@ class SessionSeeder extends Seeder
                 $startTime = Carbon::parse($date->format('Y-m-d') . ' ' . ['09:00', '10:30', '13:00', '14:30', '16:00'][rand(0, 4)]);
                 $endTime = $startTime->copy()->addHours(rand(1, 2))->addMinutes(rand(0, 1) * 30);
 
+                $mode = $locationModes[array_rand($locationModes)];
                 $session = TutoringSession::create([
                     'date' => $date,
                     'start_time' => $startTime->format('H:i'),
@@ -68,7 +69,10 @@ class SessionSeeder extends Seeder
                     'teacher_id' => $tutor->id,
                     'subject' => $subject,
                     'year_level' => $yearLevel,
-                    'location' => $locations[array_rand($locations)],
+                    'location_type' => $mode,
+                    'location_detail' => $mode === 'online'
+                        ? 'https://meet.google.com/seed-'.rand(100, 999)
+                        : 'Room '.rand(101, 120),
                     'session_type' => $sessionTypes[array_rand($sessionTypes)],
                     'status' => $status,
                     'lesson_note' => $status === 'completed' ? 'Covered ' . $subject . ' topics. Students showed good understanding.' : null,

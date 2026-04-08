@@ -13,10 +13,28 @@ class TutoringSession extends Model
 
     protected $fillable = [
         'date', 'start_time', 'end_time', 'teacher_id', 'class_id', 'subject',
-        'year_level', 'location', 'session_type', 'status',
+        'year_level', 'location_type', 'location_detail', 'session_type', 'status',
         'lesson_note', 'topics_taught', 'homework_resources',
         'attendance_marked', 'ready_for_invoicing', 'color'
     ];
+
+    /**
+     * Virtual attribute for clients that still read `location` (display string).
+     */
+    protected $appends = ['location'];
+
+    public function getLocationAttribute(): ?string
+    {
+        if ($this->location_type === null) {
+            return null;
+        }
+        $detail = trim((string) ($this->location_detail ?? ''));
+        if ($this->location_type === 'online') {
+            return $detail !== '' ? "Online: {$detail}" : 'online';
+        }
+
+        return $detail !== '' ? "Onsite: {$detail}" : 'centre';
+    }
 
     protected function casts(): array
     {

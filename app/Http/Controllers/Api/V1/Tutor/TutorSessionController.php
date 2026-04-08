@@ -202,12 +202,26 @@ class TutorSessionController extends Controller
             'student_ids.*' => 'exists:students,id',
             'subject' => 'required|string|max:255',
             'year_level' => 'nullable|string|max:50',
-            'location' => 'required|in:online,centre,home',
+            'location_type' => 'nullable|in:online,onsite',
+            'location_detail' => 'nullable|string|max:5000',
+            'location' => 'nullable|in:online,centre,home',
             'session_type' => 'required|in:1:1,group',
             'class_id' => 'nullable|exists:classes,id',
             'materials' => 'nullable|array',
             'materials.*' => 'file|max:10240|mimes:pdf,doc,docx,txt,rtf,ppt,pptx,xls,xlsx,jpg,jpeg,png',
         ]);
+
+        $locationType = $validated['location_type'] ?? null;
+        $locationDetail = $validated['location_detail'] ?? null;
+        if (! $locationType && isset($validated['location'])) {
+            $locationType = $validated['location'] === 'online' ? 'online' : 'onsite';
+        }
+        if (! $locationType) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Provide location_type (online|onsite) or legacy location (online|centre|home).',
+            ], 422);
+        }
 
         // Verify class belongs to tutor if provided
         if ($request->has('class_id') && $request->class_id) {
@@ -231,7 +245,8 @@ class TutorSessionController extends Controller
             'class_id' => $validated['class_id'] ?? null,
             'subject' => $validated['subject'],
             'year_level' => $validated['year_level'] ?? null,
-            'location' => $validated['location'],
+            'location_type' => $locationType,
+            'location_detail' => $locationDetail,
             'session_type' => $validated['session_type'],
             'status' => 'planned',
         ]);
@@ -305,11 +320,18 @@ class TutorSessionController extends Controller
             'end_time' => 'sometimes|date_format:H:i|after:start_time',
             'subject' => 'sometimes|string|max:255',
             'year_level' => 'nullable|string|max:50',
-            'location' => 'sometimes|in:online,centre,home',
+            'location_type' => 'sometimes|in:online,onsite',
+            'location_detail' => 'nullable|string|max:5000',
+            'location' => 'nullable|in:online,centre,home',
             'session_type' => 'sometimes|in:1:1,group',
             'status' => 'sometimes|in:planned,completed,cancelled,no-show,rescheduled,unavailable',
             'class_id' => 'nullable|exists:classes,id',
         ]);
+
+        if (isset($validated['location']) && ! isset($validated['location_type'])) {
+            $validated['location_type'] = $validated['location'] === 'online' ? 'online' : 'onsite';
+        }
+        unset($validated['location']);
 
         // Verify class belongs to tutor if provided
         if ($request->has('class_id') && $request->class_id) {
@@ -361,7 +383,8 @@ class TutorSessionController extends Controller
             'class_id' => $originalSession->class_id,
             'subject' => $originalSession->subject,
             'year_level' => $originalSession->year_level,
-            'location' => $originalSession->location,
+            'location_type' => $originalSession->location_type,
+            'location_detail' => $originalSession->location_detail,
             'session_type' => $originalSession->session_type,
             'status' => 'rescheduled',
             // Notes/resources are meant for the completed session; keep them empty for the new proposal.

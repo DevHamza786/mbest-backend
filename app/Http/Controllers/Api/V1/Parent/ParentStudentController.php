@@ -45,33 +45,11 @@ class ParentStudentController extends Controller
                 'regex:/^Year (?:[1-9]|1[0-2])$/',
             ],
             'school' => 'nullable|string|max:255',
-            'phone' => [
-                'nullable',
-                'string',
-                'max:20',
-                function ($attribute, $value, $fail) {
-                    if ($value === null || $value === '') return;
-                    $normalized = preg_replace('/[\s-]/', '', (string) $value);
-                    if (!preg_match('/^\+61\d{9}$/', $normalized)) {
-                        $fail('The ' . $attribute . ' must be a valid Australian number in the format +61XXXXXXXXX.');
-                    }
-                },
-            ],
+            'phone' => 'nullable|string|max:255',
             'date_of_birth' => 'nullable|date|before_or_equal:today',
             'address' => 'nullable|string',
             "emergency_contact_name" => "nullable|string|max:255|regex:/^[A-Za-z][A-Za-z\\s.'-]*$/",
-            'emergency_contact_phone' => [
-                'nullable',
-                'string',
-                'max:20',
-                function ($attribute, $value, $fail) {
-                    if ($value === null || $value === '') return;
-                    $normalized = preg_replace('/[\s-]/', '', (string) $value);
-                    if (!preg_match('/^\+61\d{9}$/', $normalized)) {
-                        $fail('The ' . $attribute . ' must be a valid Australian number in the format +61XXXXXXXXX.');
-                    }
-                },
-            ],
+            'emergency_contact_phone' => 'nullable|string|max:20',
         ]);
 
         // Normalize phone inputs (strip spaces/dashes) before storing.

@@ -91,7 +91,9 @@ class ProfileController extends Controller
             'specialization.*' => 'string|max:255',
             'subject_year_mapping' => 'nullable|array',
             'subject_year_mapping.*' => 'array',
-            'subject_year_mapping.*.*' => 'regex:/^(?:[1-9]|1[0-2])$/',
+            // Avoid regex here (it can trigger preg_match delimiter errors for some inputs).
+            // Years come from UI as numeric strings like "5", so validate as integer range 1..12.
+            'subject_year_mapping.*.*' => 'integer|between:1,12',
             'hourly_rate' => 'nullable|numeric|min:0',
             'qualifications' => 'nullable|string',
             'experience_years' => 'nullable|integer|min:0',

@@ -53,6 +53,8 @@ class AuthController extends Controller
 
         $token = $user->createToken('api-token')->plainTextToken;
 
+        $user->loadMissing('tutor');
+
         // Convert avatar path to full URL
         if ($user->avatar) {
             $user->avatar = Storage::url($user->avatar);
@@ -91,6 +93,8 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken('api-token')->plainTextToken;
+
+        $user->loadMissing('tutor');
 
         // Convert avatar path to full URL
         if ($user->avatar) {

@@ -22,6 +22,14 @@ class AdminClassController extends Controller
             $query->where('tutor_id', $request->tutor_id);
         }
 
+        if ($request->filled('level')) {
+            $query->where('level', $request->input('level'));
+        }
+
+        if ($request->filled('category')) {
+            $query->where('category', 'like', '%'.$request->input('category').'%');
+        }
+
         // Search
         if ($request->has('search')) {
             $search = $request->search;
@@ -140,6 +148,14 @@ class AdminClassController extends Controller
     public function destroy($id)
     {
         $class = ClassModel::findOrFail($id);
+
+        if ($class->students()->exists() || (int) $class->enrolled > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete a class that has enrolled students.',
+            ], 422);
+        }
+
         $class->delete();
 
         return response()->json([

@@ -64,6 +64,8 @@ class StudentClassController extends Controller
                 'homework_resources' => $session->homework_resources,
                 'status' => $session->status,
                 'location' => $session->location,
+                'location_type' => $session->location_type,
+                'location_detail' => $session->location_detail,
             ];
         });
         $classData['materials'] = $class->resources->map(function($resource) {

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\ClassModel;
 use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\TutoringSession;
 use App\Models\Assignment;
 use App\Models\Notification;
@@ -18,12 +19,17 @@ class AdminDashboardController extends Controller
 {
     public function index(Request $request)
     {
+        $monthStart = now()->copy()->startOfMonth();
+        $monthEnd = now()->copy()->endOfMonth();
+
         $stats = [
             'total_students' => User::where('role', 'student')->count(),
             'total_tutors' => User::where('role', 'tutor')->count(),
             'total_classes' => ClassModel::where('status', 'active')->count(),
-            'monthly_revenue' => Invoice::where('status', 'paid')
-                ->whereMonth('paid_date', now()->month)
+            // Sum approved parent subscription payments in the current calendar month (admin-approved only)
+            'monthly_revenue' => (float) Payment::where('status', 'approved')
+                ->whereNotNull('approved_at')
+                ->whereBetween('approved_at', [$monthStart, $monthEnd])
                 ->sum('amount'),
         ];
 

@@ -3,9 +3,10 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
 use App\Models\Tutor;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class AdminUserController extends Controller
@@ -17,8 +18,15 @@ class AdminUserController extends Controller
         // Exclude admin users from the list
         $query->where('role', '!=', 'admin');
 
-        // Filter by role
-        if ($request->has('role')) {
+        // Filter by one or more roles (comma-separated: tutor,parent)
+        if ($request->filled('roles')) {
+            $roles = array_values(array_filter(array_map('trim', explode(',', (string) $request->input('roles')))));
+            $allowed = ['tutor', 'parent', 'student'];
+            $roles = array_values(array_intersect($roles, $allowed));
+            if ($roles !== []) {
+                $query->whereIn('role', $roles);
+            }
+        } elseif ($request->filled('role')) {
             $query->where('role', $request->role);
         }
 
@@ -33,20 +41,60 @@ class AdminUserController extends Controller
 
         // Filter by active status
         if ($request->has('is_active')) {
-            $query->where('is_active', $request->is_active);
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+
+        // Tutor department (matches tutors.department; narrows to users who have a tutor profile)
+        if ($request->filled('department')) {
+            $department = $request->input('department');
+            $query->whereHas('tutor', function ($q) use ($department) {
+                $q->where('department', 'like', '%' . $department . '%');
+            });
         }
 
         $perPage = $request->get('per_page', 15);
         $users = $query->with([
-            'tutor', 
+            'package:id,name',
+            'tutor',
             'student.parents' => function ($query) {
-                $query->select('users.id', 'users.name', 'users.email', 'users.avatar', 'users.phone');
+                $query->select('users.id', 'users.name', 'users.email', 'users.avatar', 'users.phone', 'users.package_id')
+                    ->with('package:id,name');
             },
-            'parentModel'
+            'parentModel',
         ])->paginate($perPage);
 
+        $collection = $users->getCollection();
+
+        $tutorProfileIds = $collection->filter(fn ($u) => $u->role === 'tutor' && $u->tutor)->pluck('tutor.id')->unique()->values();
+        $tutorStudentCounts = $tutorProfileIds->isEmpty()
+            ? collect()
+            : DB::table('class_student')
+                ->join('classes', 'classes.id', '=', 'class_student.class_id')
+                ->whereIn('classes.tutor_id', $tutorProfileIds)
+                ->selectRaw('classes.tutor_id, COUNT(DISTINCT class_student.student_id) as cnt')
+                ->groupBy('classes.tutor_id')
+                ->pluck('cnt', 'tutor_id');
+
+        $parentUserIds = $collection->filter(fn ($u) => $u->role === 'parent')->pluck('id')->unique()->values();
+        $parentChildCounts = $parentUserIds->isEmpty()
+            ? collect()
+            : DB::table('parent_student')
+                ->whereIn('parent_id', $parentUserIds)
+                ->selectRaw('parent_id, COUNT(*) as cnt')
+                ->groupBy('parent_id')
+                ->pluck('cnt', 'parent_id');
+
+        $studentRowIds = $collection->filter(fn ($u) => $u->role === 'student' && $u->student)->pluck('student.id')->unique()->values();
+        $studentClassCounts = $studentRowIds->isEmpty()
+            ? collect()
+            : DB::table('class_student')
+                ->whereIn('student_id', $studentRowIds)
+                ->selectRaw('student_id, COUNT(*) as cnt')
+                ->groupBy('student_id')
+                ->pluck('cnt', 'student_id');
+
         // Convert avatar paths to full URLs and attach parent info to students
-        $users->getCollection()->transform(function ($user) {
+        $collection->transform(function ($user) use ($tutorStudentCounts, $parentChildCounts, $studentClassCounts) {
             // Convert avatar to full URL if it exists
             if ($user->avatar && !filter_var($user->avatar, FILTER_VALIDATE_URL)) {
                 $user->avatar = Storage::url($user->avatar);
@@ -68,9 +116,60 @@ class AdminUserController extends Controller
                 });
                 $user->setAttribute('parents_data', $parents->values());
             }
-            
+
+            // Incomplete badge: student/parent — base fields; tutor — tutors.profile_complete
+            $baseComplete = !empty($user->phone) && !empty($user->date_of_birth) && !empty($user->address);
+
+            $isIncompleteProfile = false;
+            if (in_array($user->role, ['student', 'parent'], true)) {
+                $isIncompleteProfile = !$baseComplete;
+            } elseif ($user->role === 'tutor') {
+                $tutor = $user->tutor;
+                $isIncompleteProfile = !$tutor || !$tutor->profile_complete;
+            }
+
+            $user->setAttribute('is_incomplete_profile', $isIncompleteProfile);
+
+            // Admin list: package + counts (role-specific meaning on the frontend)
+            if ($user->role === 'tutor' && $user->tutor) {
+                $user->setAttribute(
+                    'tutor_students_taught_count',
+                    (int) ($tutorStudentCounts[$user->tutor->id] ?? 0)
+                );
+            } else {
+                $user->setAttribute('tutor_students_taught_count', 0);
+            }
+
+            if ($user->role === 'parent') {
+                $user->setAttribute('children_count', (int) ($parentChildCounts[$user->id] ?? 0));
+            } else {
+                $user->setAttribute('children_count', 0);
+            }
+
+            if ($user->role === 'student' && $user->student) {
+                $user->setAttribute(
+                    'enrolled_classes_count',
+                    (int) ($studentClassCounts[$user->student->id] ?? 0)
+                );
+                $familyPackageName = null;
+                if ($user->student->relationLoaded('parents')) {
+                    foreach ($user->student->parents as $p) {
+                        if ($p->relationLoaded('package') && $p->package) {
+                            $familyPackageName = $p->package->name;
+                            break;
+                        }
+                    }
+                }
+                $user->setAttribute('family_package_name', $familyPackageName);
+            } else {
+                $user->setAttribute('enrolled_classes_count', 0);
+                $user->setAttribute('family_package_name', null);
+            }
+
             return $user;
         });
+
+        $users->setCollection($collection);
 
         return response()->json([
             'success' => true,

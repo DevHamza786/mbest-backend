@@ -180,13 +180,19 @@ class TutorLessonRequestController extends Controller
             $endTime = $endTime . ':00';
         }
         
+        $legacyLoc = $data['location'] ?? 'online';
+        $locationType = in_array($legacyLoc, ['online', 'centre', 'home'], true)
+            ? ($legacyLoc === 'online' ? 'online' : 'onsite')
+            : 'online';
+
         $sessionData = [
             'teacher_id' => $tutor->id,
             'date' => $validated['date'] ?? $data['preferred_date'] ?? date('Y-m-d'),
             'start_time' => $startTime,
             'end_time' => $endTime,
             'subject' => $data['lesson_type'] ?? $data['subject'] ?? 'General Lesson',
-            'location' => $data['location'] ?? 'online', // Enum values: 'online', 'centre', 'home'
+            'location_type' => $locationType,
+            'location_detail' => $data['location_detail'] ?? null,
             'session_type' => '1:1', // Enum values: '1:1' or 'group'
             'status' => 'planned',
         ];

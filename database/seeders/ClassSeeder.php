@@ -33,7 +33,7 @@ class ClassSeeder extends Seeder
                 'level' => 'Advanced',
                 'capacity' => 30,
                 'credits' => 4,
-                'duration' => '16 weeks',
+                'duration' => '2',
                 'status' => 'active',
             ],
             [
@@ -44,7 +44,7 @@ class ClassSeeder extends Seeder
                 'level' => 'Beginner',
                 'capacity' => 25,
                 'credits' => 3,
-                'duration' => '12 weeks',
+                'duration' => '3',
                 'status' => 'active',
             ],
             [
@@ -55,7 +55,7 @@ class ClassSeeder extends Seeder
                 'level' => 'Intermediate',
                 'capacity' => 28,
                 'credits' => 4,
-                'duration' => '14 weeks',
+                'duration' => '4',
                 'status' => 'active',
             ],
             [
@@ -66,7 +66,7 @@ class ClassSeeder extends Seeder
                 'level' => 'Intermediate',
                 'capacity' => 20,
                 'credits' => 3,
-                'duration' => '12 weeks',
+                'duration' => '2',
                 'status' => 'active',
             ],
             [
@@ -77,7 +77,7 @@ class ClassSeeder extends Seeder
                 'level' => 'Advanced',
                 'capacity' => 22,
                 'credits' => 4,
-                'duration' => '16 weeks',
+                'duration' => '3',
                 'status' => 'active',
             ],
             [
@@ -88,7 +88,7 @@ class ClassSeeder extends Seeder
                 'level' => 'Advanced',
                 'capacity' => 24,
                 'credits' => 4,
-                'duration' => '14 weeks',
+                'duration' => '3',
                 'status' => 'active',
             ],
         ];

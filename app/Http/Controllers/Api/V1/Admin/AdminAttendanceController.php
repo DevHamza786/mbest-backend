@@ -330,7 +330,8 @@ class AdminAttendanceController extends Controller
             $hours = ($end->getTimestamp() - $start->getTimestamp()) / 3600;
             
             $totalHours += $hours;
-            if (!$session->location || strtolower($session->location) === 'online' || strtolower($session->location) === 'home') {
+            $isOnline = $session->location_type === 'online';
+            if ($isOnline) {
                 $onlineHours += $hours;
             } else {
                 $offlineHours += $hours;

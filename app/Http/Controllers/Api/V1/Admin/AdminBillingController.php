@@ -12,15 +12,16 @@ use Illuminate\Http\Request;
 class AdminBillingController extends Controller
 {
     /**
-     * Dashboard KPIs for admin billing (aggregated from invoices + users).
+     * Dashboard KPIs for admin billing (revenue/pending from payments; overdue from invoices).
      */
     public function summary(Request $request)
     {
-        $totalRevenue = (float) Invoice::where('status', 'paid')->sum('amount');
+        // Revenue & pending: parent subscription payments (admin-approved vs pending)
+        $totalRevenue = (float) Payment::where('status', 'approved')->sum('amount');
 
-        $pendingBase = Invoice::where('status', 'pending');
-        $pendingAmount = (float) (clone $pendingBase)->sum('amount');
-        $pendingCount = (clone $pendingBase)->count();
+        $pendingPaymentsBase = Payment::where('status', 'pending');
+        $pendingAmount = (float) (clone $pendingPaymentsBase)->sum('amount');
+        $pendingCount = (clone $pendingPaymentsBase)->count();
 
         $overdueBase = Invoice::where('status', 'overdue');
         $overdueAmount = (float) (clone $overdueBase)->sum('amount');
@@ -34,25 +35,15 @@ class AdminBillingController extends Controller
         $lastMonthStart = $now->copy()->subMonth()->startOfMonth();
         $lastMonthEnd = $now->copy()->subMonth()->endOfMonth();
 
-        // Month revenue: prefer paid_date; if missing, fall back to issue_date for paid invoices
-        $paidThisMonth = (float) Invoice::where('status', 'paid')
-            ->where(function ($q) use ($thisMonthStart, $thisMonthEnd) {
-                $q->whereBetween('paid_date', [$thisMonthStart, $thisMonthEnd])
-                    ->orWhere(function ($q2) use ($thisMonthStart, $thisMonthEnd) {
-                        $q2->whereNull('paid_date')
-                            ->whereBetween('issue_date', [$thisMonthStart, $thisMonthEnd]);
-                    });
-            })
+        // Month-over-month trend: approved payments by approval date
+        $paidThisMonth = (float) Payment::where('status', 'approved')
+            ->whereNotNull('approved_at')
+            ->whereBetween('approved_at', [$thisMonthStart, $thisMonthEnd])
             ->sum('amount');
 
-        $paidLastMonth = (float) Invoice::where('status', 'paid')
-            ->where(function ($q) use ($lastMonthStart, $lastMonthEnd) {
-                $q->whereBetween('paid_date', [$lastMonthStart, $lastMonthEnd])
-                    ->orWhere(function ($q2) use ($lastMonthStart, $lastMonthEnd) {
-                        $q2->whereNull('paid_date')
-                            ->whereBetween('issue_date', [$lastMonthStart, $lastMonthEnd]);
-                    });
-            })
+        $paidLastMonth = (float) Payment::where('status', 'approved')
+            ->whereNotNull('approved_at')
+            ->whereBetween('approved_at', [$lastMonthStart, $lastMonthEnd])
             ->sum('amount');
 
         $revenueChangePercent = null;
