@@ -24,7 +24,7 @@ class ParentClassController extends Controller
         
         // Get student - check if exists first
         $child = Student::find($id);
-        
+
         if (!$child) {
             return response()->json([
                 'success' => false,
@@ -84,7 +84,7 @@ class ParentClassController extends Controller
                 'message' => 'Student not found or access denied',
             ], 404);
         }
-
+        
         $class = $child->classes()
             ->with(['tutor.user', 'schedules', 'assignments', 'resources'])
             ->findOrFail($classId);

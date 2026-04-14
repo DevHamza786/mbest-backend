@@ -38,7 +38,7 @@ class ClassModel extends Model
 
     public function schedules()
     {
-        return $this->hasMany(ClassSchedule::class, 'class_id');
+        return $this->hasMany(TutoringSession::class, 'class_id');
     }
 
     public function assignments()

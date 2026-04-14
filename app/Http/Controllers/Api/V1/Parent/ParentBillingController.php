@@ -5,11 +5,68 @@ namespace App\Http\Controllers\Api\V1\Parent;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Invoice;
+use App\Models\Payment;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class ParentBillingController extends Controller
 {
+    /**
+     * Get all payments for the parent
+     */
+    public function payments(Request $request)
+    {
+        $user = $request->user();
+        $parent = $user->parentModel;
+
+        if (!$parent) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parent profile not found',
+            ], 404);
+        }
+
+        $query = Payment::where('parent_id', $user->id)
+            ->with(['package', 'approver']);
+
+        // Filter by status
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $perPage = $request->get('per_page', 15);
+        $payments = $query->orderBy('created_at', 'desc')->paginate($perPage);
+
+        return response()->json([
+            'success' => true,
+            'data' => $payments,
+        ]);
+    }
+
+    /**
+     * Get a specific payment details
+     */
+    public function paymentShow(Request $request, $id)
+    {
+        $user = $request->user();
+        $parent = $user->parentModel;
+
+        if (!$parent) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parent profile not found',
+            ], 404);
+        }
+
+        $payment = Payment::where('parent_id', $user->id)
+            ->with(['package', 'approver'])
+            ->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $payment,
+        ]);
+    }
     public function index(Request $request)
     {
         $user = $request->user();

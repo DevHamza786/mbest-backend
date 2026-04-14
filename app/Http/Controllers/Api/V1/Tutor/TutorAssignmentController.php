@@ -100,8 +100,8 @@ class TutorAssignmentController extends Controller
             'description' => 'nullable|string',
             'instructions' => 'nullable|string',
             'class_id' => 'nullable|exists:classes,id',
-            // Prevent setting due_date in the future.
-            'due_date' => 'required|date|before_or_equal:today',
+            // Due date must be in the future (tomorrow or later)
+            'due_date' => 'required|date|after:today',
             'max_points' => 'required|integer|min:1',
             'submission_type' => 'required|in:file,text,link',
             'allowed_file_types' => 'nullable|array',

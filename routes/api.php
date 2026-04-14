@@ -156,7 +156,7 @@ Route::prefix('v1')->group(function () {
             
             // Attendance
             Route::get('/attendance', [TutorAttendanceController::class, 'index']);
-            Route::get('/attendance-records', [TutorAttendanceController::class, 'records']);
+        Route::get('/attendance-records', [TutorAttendanceController::class, 'records']);
             
             // Hours & Invoices
             Route::get('/hours', [TutorHoursController::class, 'index']);
@@ -258,6 +258,8 @@ Route::prefix('v1')->group(function () {
                 Route::get('/invoices', [ParentBillingController::class, 'index']);
                 Route::get('/invoices/{id}', [ParentBillingController::class, 'show']);
                 Route::get('/invoices/{id}/pdf', [ParentBillingController::class, 'downloadPdf']);
+                Route::get('/payments', [ParentBillingController::class, 'payments']);
+                Route::get('/payments/{id}', [ParentBillingController::class, 'paymentShow']);
             });
         });
 

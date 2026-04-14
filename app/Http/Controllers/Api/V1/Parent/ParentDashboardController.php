@@ -10,6 +10,7 @@ use App\Models\ClassModel;
 use App\Models\Assignment;
 use App\Models\TutoringSession;
 use Illuminate\Http\Request;
+use Carbon\Carbon;
 
 class ParentDashboardController extends Controller
 {
@@ -32,6 +33,8 @@ class ParentDashboardController extends Controller
         $activeChildId = $request->get('child_id', $children->first()?->id);
         $activeChild = $activeChildId ? $children->firstWhere('id', $activeChildId) : null;
 
+        $recentGrades = null;
+        $upcomingSessions = null;
         $stats = null;
         if ($activeChild) {
             $stats = [
@@ -49,6 +52,43 @@ class ParentDashboardController extends Controller
                 })
                 ->count(),
             ];
+
+            // Get recent grades (last 10)
+            $recentGrades = Grade::where('student_id', $activeChild->id)
+                ->with(['assignment', 'classModel'])
+                ->orderBy('date', 'desc')
+                ->limit(10)
+                ->get();
+
+            // Get upcoming sessions from TutoringSession
+            $upcomingSessions = TutoringSession::whereHas('students', function ($q) use ($activeChild) {
+                $q->where('students.id', $activeChild->id);
+            })
+            ->where('status', 'planned')
+            ->where('date', '>=', now()->toDateString())
+            ->orderBy('date')
+            ->orderBy('start_time')
+            ->limit(5)
+            ->with(['classModel' => function ($q) {
+                $q->select('id', 'name', 'code');
+            }, 'teacher.user'])
+            ->get()
+            ->map(function ($session) {
+                return [
+                    'id' => $session->id,
+                    'class_id' => $session->class_id,
+                    'class_name' => $session->classModel?->name,
+                    'class_code' => $session->classModel?->code,
+                    'date' => $session->date,
+                    'day_name' => Carbon::parse($session->date)->format('l'),
+                    'start_time' => $session->start_time,
+                    'end_time' => $session->end_time,
+                    'location' => $session->location,
+                    'subject' => $session->subject,
+                    'teacher_name' => $session->teacher?->user?->name,
+                    'view_url' => '/parents/classes/' . $session->class_id,
+                ];
+            });
         }
 
         return response()->json([
@@ -57,6 +97,8 @@ class ParentDashboardController extends Controller
                 'children' => $children,
                 'active_child' => $activeChild,
                 'stats' => $stats,
+                'recent_grades' => $recentGrades,
+                'upcoming_sessions' => $upcomingSessions,
             ],
         ]);
     }

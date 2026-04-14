@@ -37,7 +37,7 @@ class Student extends Model
 
     public function sessions()
     {
-        return $this->belongsToMany(TutoringSession::class, 'session_student', 'student_id', 'session_id');
+        return $this->belongsToMany(TutoringSession::class, 'session_student', 'id', 'session_id');
     }
 
     public function assignments()
