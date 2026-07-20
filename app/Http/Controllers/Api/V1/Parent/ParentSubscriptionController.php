@@ -65,11 +65,17 @@ class ParentSubscriptionController extends Controller
             'status' => 'pending',
         ]);
 
-        // Update user's package (but keep status as pending)
-        $user->update([
-            'package_id' => $package->id,
-            'subscription_status' => 'pending',
-        ]);
+        // Only gate the account into "pending" immediately for a first-time subscription.
+        // An already-active parent keeps using their current package/students until this
+        // request is approved — AdminPaymentController::approve() applies the new package
+        // to the user at approval time regardless of what happens here.
+        $isUpgrade = $user->subscription_status === 'active';
+        if (!$isUpgrade) {
+            $user->update([
+                'package_id' => $package->id,
+                'subscription_status' => 'pending',
+            ]);
+        }
 
         // Notify admin
         $admins = \App\Models\User::where('role', 'admin')->get();
@@ -78,7 +84,7 @@ class ParentSubscriptionController extends Controller
             $notificationService->createNotification(
                 $admin->id,
                 'payment',
-                'New Payment Pending Approval',
+                $isUpgrade ? 'New Upgrade Request Pending Approval' : 'New Payment Pending Approval',
                 "Parent {$user->name} has submitted a payment for package '{$package->name}'. Amount: $" . number_format($package->price, 2),
                 ['payment_id' => $payment->id, 'parent_id' => $user->id],
                 'high'
@@ -88,7 +94,9 @@ class ParentSubscriptionController extends Controller
         return response()->json([
             'success' => true,
             'data' => $payment->load('package'),
-            'message' => 'Payment submitted successfully. Waiting for admin approval.',
+            'message' => $isUpgrade
+                ? 'Upgrade request submitted. Your current plan stays active until approved.'
+                : 'Payment submitted successfully. Waiting for admin approval.',
         ], 201);
     }
 
