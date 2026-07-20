@@ -143,21 +143,35 @@ class AdminPaymentController extends Controller
             'admin_notes' => 'required|string',
         ]);
 
-        $payment->update([
-            'status' => 'rejected',
-            'admin_notes' => $validated['admin_notes'],
-        ]);
+        DB::transaction(function () use ($payment, $validated, $request) {
+            $payment->update([
+                'status' => 'rejected',
+                'admin_notes' => $validated['admin_notes'],
+            ]);
 
-        // Notify parent
-        $notificationService = new \App\Services\NotificationService();
-        $notificationService->createNotification(
-            $payment->parent_id,
-            'payment',
-            'Payment Rejected',
-            "Your payment has been rejected. Reason: {$validated['admin_notes']}",
-            ['payment_id' => $payment->id],
-            'high'
-        );
+            // If this was a first-time subscription request (not an upgrade — an upgrade
+            // never flips subscription_status to 'pending', per the Task 1 fix), the parent
+            // is currently stuck at subscription_status = 'pending' with no way back to
+            // package selection. Reset them so they're routed back to choosing a package.
+            $parent = $payment->parent;
+            if ($parent && $parent->subscription_status === 'pending' && $parent->package_id === $payment->package_id) {
+                $parent->update([
+                    'package_id' => null,
+                    'subscription_status' => null,
+                ]);
+            }
+
+            // Notify parent
+            $notificationService = new \App\Services\NotificationService();
+            $notificationService->createNotification(
+                $payment->parent_id,
+                'payment',
+                'Payment Rejected',
+                "Your payment has been rejected. Reason: {$validated['admin_notes']}",
+                ['payment_id' => $payment->id],
+                'high'
+            );
+        });
 
         return response()->json([
             'success' => true,
