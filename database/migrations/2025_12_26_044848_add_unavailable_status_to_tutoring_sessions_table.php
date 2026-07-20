@@ -12,8 +12,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Add 'unavailable' to the status enum
-        DB::statement("ALTER TABLE tutoring_sessions MODIFY COLUMN status ENUM('planned', 'completed', 'cancelled', 'no-show', 'rescheduled', 'unavailable') DEFAULT 'planned'");
+        // Add 'unavailable' to the status enum - use database-agnostic approach
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE tutoring_sessions MODIFY COLUMN status ENUM('planned', 'completed', 'cancelled', 'no-show', 'rescheduled', 'unavailable') DEFAULT 'planned'");
+        }
+        // SQLite doesn't need modification for ENUM - it's just TEXT
     }
 
     /**
@@ -21,7 +24,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Remove 'unavailable' from the status enum
-        DB::statement("ALTER TABLE tutoring_sessions MODIFY COLUMN status ENUM('planned', 'completed', 'cancelled', 'no-show', 'rescheduled') DEFAULT 'planned'");
+        // Remove 'unavailable' from the status enum - use database-agnostic approach
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE tutoring_sessions MODIFY COLUMN status ENUM('planned', 'completed', 'cancelled', 'no-show', 'rescheduled') DEFAULT 'planned'");
+        }
+        // SQLite doesn't need modification for ENUM - it's just TEXT
     }
 };
