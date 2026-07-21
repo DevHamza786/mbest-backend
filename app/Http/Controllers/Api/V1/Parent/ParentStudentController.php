@@ -69,9 +69,12 @@ class ParentStudentController extends Controller
                 'message' => 'Student added successfully',
             ], 201);
         } catch (\Exception $e) {
+            $limitReached = $e->getMessage() === 'Student limit reached for your subscription package';
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
+                'limit_reached' => $limitReached,
             ], 400);
         }
     }
