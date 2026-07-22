@@ -14,6 +14,8 @@ class Grade extends Model
         'assessment', 'grade', 'max_grade', 'category', 'date', 'notes'
     ];
 
+    protected $appends = ['percentage'];
+
     protected function casts(): array
     {
         return [
@@ -21,6 +23,15 @@ class Grade extends Model
             'max_grade' => 'decimal:2',
             'date' => 'date',
         ];
+    }
+
+    public function getPercentageAttribute(): ?float
+    {
+        if (! $this->max_grade || (float) $this->max_grade === 0.0) {
+            return null;
+        }
+
+        return round(((float) $this->grade / (float) $this->max_grade) * 100, 1);
     }
 
     // Relationships
