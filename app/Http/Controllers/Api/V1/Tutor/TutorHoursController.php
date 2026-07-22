@@ -116,6 +116,22 @@ class TutorHoursController extends Controller
 
         $paidEarnings = round($paidHours * $tutor->hourly_rate, 2);
 
+        $completedSessions = TutoringSession::where('teacher_id', $tutor->id)
+            ->where('status', 'completed')
+            ->get();
+        $sumHoursSince = function ($since) use ($completedSessions) {
+            return $completedSessions
+                ->filter(fn ($session) => Carbon::parse($session->date)->greaterThanOrEqualTo($since))
+                ->sum(function ($session) {
+                    $dateStr = $session->date instanceof \Carbon\Carbon
+                        ? $session->date->format('Y-m-d')
+                        : $session->date;
+                    $start = Carbon::parse($dateStr . ' ' . $session->start_time);
+                    $end = Carbon::parse($dateStr . ' ' . $session->end_time);
+                    return $start->diffInMinutes($end) / 60;
+                });
+        };
+
         return response()->json([
             'success' => true,
             'data' => $sessions,
@@ -126,6 +142,9 @@ class TutorHoursController extends Controller
                 'paid_earnings' => $paidEarnings,
                 'pending_hours' => round($totalHours - $paidHours, 2),
                 'pending_earnings' => round($totalEarnings - $paidEarnings, 2),
+                'this_month' => round($sumHoursSince(now()->startOfMonth()), 2),
+                'this_week' => round($sumHoursSince(now()->startOfWeek()), 2),
+                'sessions_count' => $completedSessions->count(),
             ],
         ]);
     }
