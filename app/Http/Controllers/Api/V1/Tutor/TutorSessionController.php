@@ -493,6 +493,13 @@ class TutorSessionController extends Controller
 
         $session = TutoringSession::where('teacher_id', $tutor->id)->findOrFail($id);
 
+        if ($session->attendance_marked) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Attendance has already been recorded for this session.',
+            ], 409);
+        }
+
         $validated = $request->validate([
             'attendance' => 'required|array',
             'attendance.*.student_id' => 'required|exists:students,id',

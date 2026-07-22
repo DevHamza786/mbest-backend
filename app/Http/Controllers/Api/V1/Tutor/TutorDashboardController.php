@@ -39,6 +39,15 @@ class TutorDashboardController extends Controller
                 ->get(),
         ];
 
+        $todaysClasses = TutoringSession::where('teacher_id', $tutor->id)
+            ->where('status', 'planned')
+            ->where('date', now()->toDateString())
+            ->orderBy('start_time')
+            ->with(['students.user'])
+            ->get();
+        $stats['todays_classes'] = $todaysClasses->count();
+        $stats['todays_classes_list'] = $todaysClasses;
+
         return response()->json([
             'success' => true,
             'data' => array_merge($stats, [
