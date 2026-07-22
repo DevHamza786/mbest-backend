@@ -195,7 +195,7 @@ class TutorAssignmentController extends Controller
             'description' => 'nullable|string',
             'instructions' => 'nullable|string',
             'class_id' => 'nullable|exists:classes,id',
-            'due_date' => 'sometimes|date|before_or_equal:today',
+            'due_date' => 'sometimes|date|after:today',
             'max_points' => 'sometimes|integer|min:1',
             'submission_type' => 'sometimes|in:file,text,link',
             'allowed_file_types' => 'nullable|array',
