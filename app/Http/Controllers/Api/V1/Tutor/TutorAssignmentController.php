@@ -170,13 +170,7 @@ class TutorAssignmentController extends Controller
             }
         });
 
-        // Ensure file links are valid URLs for the frontend.
-        // Stored file_url values are relative paths on the `public` disk.
-        $assignment->submissions->each(function ($submission) {
-            if (!empty($submission->file_url)) {
-                $submission->file_url = Storage::url($submission->file_url);
-            }
-        });
+        // (file_url is resolved to an absolute URL by AssignmentSubmission's own accessor now.)
 
         // Transform assignment data for frontend
         $assignmentData = $assignment->toArray();
@@ -267,12 +261,7 @@ class TutorAssignmentController extends Controller
         $assignment = Assignment::where('tutor_id', $tutor->id)->findOrFail($id);
         $submissions = $assignment->submissions()->with('student.user')->orderBy('submitted_at', 'desc')->get();
 
-        // Ensure file links are valid URLs for the frontend.
-        $submissions->each(function ($submission) {
-            if (!empty($submission->file_url)) {
-                $submission->file_url = Storage::url($submission->file_url);
-            }
-        });
+        // (file_url is resolved to an absolute URL by AssignmentSubmission's own accessor now.)
 
         return response()->json([
             'success' => true,

@@ -149,9 +149,12 @@ class StudentAssignmentController extends Controller
 
         // Handle file submission
         if ($assignment->submission_type === 'file' && $request->hasFile('file')) {
-            // If re-submitting, delete old file if it exists
-            if ($existingSubmission && $existingSubmission->file_url) {
-                Storage::disk('public')->delete($existingSubmission->file_url);
+            // If re-submitting, delete old file if it exists. Use the raw stored
+            // path, not the file_url accessor (which now resolves to an absolute
+            // URL) - Storage::delete() expects a disk-relative path.
+            $oldPath = $existingSubmission?->getRawOriginal('file_url');
+            if ($oldPath) {
+                Storage::disk('public')->delete($oldPath);
             }
 
             $file = $request->file('file');
