@@ -12,7 +12,7 @@ class TutoringSession extends Model
     protected $table = 'tutoring_sessions';
 
     protected $fillable = [
-        'date', 'start_time', 'end_time', 'teacher_id', 'class_id', 'subject',
+        'date', 'start_time', 'end_time', 'teacher_id', 'class_id', 'subject', 'title',
         'year_level', 'location_type', 'location_detail', 'session_type', 'status',
         'lesson_note', 'topics_taught', 'homework_resources',
         'attendance_marked', 'ready_for_invoicing', 'color'

@@ -90,6 +90,8 @@ class AdminCalendarController extends Controller
             'teacher_id' => 'required|exists:tutors,id',
             'class_id' => 'nullable|exists:classes,id',
             'subject' => 'required|string|max:255',
+            'title' => 'nullable|string|max:255',
+            'lesson_note' => 'nullable|string',
             'year_level' => 'nullable|string|max:50',
             'location_type' => 'nullable|in:online,onsite',
             'location_detail' => 'nullable|string|max:5000',
@@ -101,6 +103,8 @@ class AdminCalendarController extends Controller
             'repeat_days' => 'nullable|array',
             'repeat_days.*' => 'integer|min:0|max:6',
             'repeat_until' => 'nullable|date|after_or_equal:date',
+            'materials' => 'nullable|array',
+            'materials.*' => 'file|max:10240',
         ]);
 
         $allowedStatuses = ['planned', 'completed', 'cancelled', 'no-show', 'rescheduled', 'unavailable'];
@@ -151,12 +155,30 @@ class AdminCalendarController extends Controller
         }
 
         $studentIds = null;
+        $class = $validated['class_id'] ? \App\Models\ClassModel::find($validated['class_id']) : null;
         if (isset($validated['student_ids']) && !empty($validated['student_ids'])) {
             $studentIds = $validated['student_ids'];
-        } elseif ($validated['class_id']) {
-            $class = \App\Models\ClassModel::find($validated['class_id']);
-            if ($class) {
-                $studentIds = $class->students()->pluck('students.id')->toArray();
+        } elseif ($class) {
+            $studentIds = $class->students()->pluck('students.id')->toArray();
+        }
+
+        // Year level is inherited from the linked class rather than set directly.
+        $yearLevel = $class?->year_level ?? $validated['year_level'] ?? null;
+
+        // Store uploaded materials once; attach the same stored files to every
+        // session created in this request (relevant for recurring sessions).
+        $storedMaterials = [];
+        if ($request->hasFile('materials')) {
+            foreach ((array) $request->file('materials') as $material) {
+                if (!$material) {
+                    continue;
+                }
+                $storedMaterials[] = [
+                    'file_name' => $material->getClientOriginalName(),
+                    'file_path' => $material->store('tutoring_session_materials', 'public'),
+                    'mime_type' => $material->getClientMimeType(),
+                    'file_size' => $material->getSize(),
+                ];
             }
         }
 
@@ -169,7 +191,9 @@ class AdminCalendarController extends Controller
                 'teacher_id' => $validated['teacher_id'],
                 'class_id' => $validated['class_id'] ?? null,
                 'subject' => $validated['subject'],
-                'year_level' => $validated['year_level'] ?? null,
+                'title' => $validated['title'] ?? null,
+                'lesson_note' => $validated['lesson_note'] ?? null,
+                'year_level' => $yearLevel,
                 'location_type' => $locationType,
                 'location_detail' => $locationDetail,
                 'session_type' => $validated['session_type'],
@@ -180,7 +204,11 @@ class AdminCalendarController extends Controller
                 $session->students()->attach($studentIds);
             }
 
-            $createdSessions[] = $session->load(['teacher.user', 'students.user', 'classModel']);
+            foreach ($storedMaterials as $material) {
+                $session->sessionFiles()->create($material);
+            }
+
+            $createdSessions[] = $session->load(['teacher.user', 'students.user', 'classModel', 'sessionFiles']);
         }
 
         return response()->json([
@@ -282,7 +310,9 @@ class AdminCalendarController extends Controller
             'start_time' => 'sometimes|date_format:H:i',
             'end_time' => 'sometimes|date_format:H:i|after:start_time',
             'subject' => 'sometimes|string|max:255',
-            'year_level' => 'nullable|string|max:50',
+            'title' => 'nullable|string|max:255',
+            // year_level is not independently editable here - it's inherited from
+            // the session's class at creation time (see store()).
             'location_type' => 'sometimes|in:online,onsite',
             'location_detail' => 'nullable|string|max:5000',
             'location' => 'nullable|string|max:255',
@@ -291,6 +321,8 @@ class AdminCalendarController extends Controller
             'teacher_id' => 'sometimes|exists:tutors,id',
             'student_ids' => 'sometimes|array',
             'student_ids.*' => 'exists:students,id',
+            'materials' => 'nullable|array',
+            'materials.*' => 'file|max:10240',
         ]);
 
         if (isset($validated['location'])) {
@@ -303,6 +335,21 @@ class AdminCalendarController extends Controller
             unset($validated['location']);
         }
 
+        if ($request->hasFile('materials')) {
+            foreach ((array) $request->file('materials') as $material) {
+                if (!$material) {
+                    continue;
+                }
+                $session->sessionFiles()->create([
+                    'file_name' => $material->getClientOriginalName(),
+                    'file_path' => $material->store('tutoring_session_materials', 'public'),
+                    'mime_type' => $material->getClientMimeType(),
+                    'file_size' => $material->getSize(),
+                ]);
+            }
+        }
+        unset($validated['materials']);
+
         // Update session
         $session->update($validated);
 
@@ -313,7 +360,7 @@ class AdminCalendarController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $session->load(['teacher.user', 'students.user', 'studentNotes']),
+            'data' => $session->load(['teacher.user', 'students.user', 'studentNotes', 'sessionFiles']),
             'message' => 'Session updated successfully',
         ]);
     }
