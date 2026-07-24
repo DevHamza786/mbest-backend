@@ -98,6 +98,9 @@ class AdminCalendarController extends Controller
             'status' => 'sometimes|string|max:32',
             'student_ids' => 'nullable|array',
             'student_ids.*' => 'exists:students,id',
+            'repeat_days' => 'nullable|array',
+            'repeat_days.*' => 'integer|min:0|max:6',
+            'repeat_until' => 'nullable|date|after_or_equal:date',
         ]);
 
         $allowedStatuses = ['planned', 'completed', 'cancelled', 'no-show', 'rescheduled', 'unavailable'];
@@ -128,36 +131,65 @@ class AdminCalendarController extends Controller
             ], 422);
         }
 
-        $session = TutoringSession::create([
-            'date' => $validated['date'],
-            'start_time' => $validated['start_time'],
-            'end_time' => $validated['end_time'],
-            'teacher_id' => $validated['teacher_id'],
-            'class_id' => $validated['class_id'] ?? null,
-            'subject' => $validated['subject'],
-            'year_level' => $validated['year_level'] ?? null,
-            'location_type' => $locationType,
-            'location_detail' => $locationDetail,
-            'session_type' => $validated['session_type'],
-            'status' => $status,
-        ]);
+        // Build the list of session dates: just the given date, unless the
+        // admin picked specific weekdays to repeat on through an end date.
+        $sessionDates = [$validated['date']];
+        if (!empty($validated['repeat_days']) && !empty($validated['repeat_until'])) {
+            $repeatDays = $validated['repeat_days'];
+            $cursor = \Carbon\Carbon::parse($validated['date']);
+            $until = \Carbon\Carbon::parse($validated['repeat_until']);
+            $sessionDates = [];
+            while ($cursor->lte($until)) {
+                if (in_array((int) $cursor->dayOfWeek, $repeatDays, true)) {
+                    $sessionDates[] = $cursor->toDateString();
+                }
+                $cursor->addDay();
+            }
+            if (empty($sessionDates)) {
+                $sessionDates = [$validated['date']];
+            }
+        }
 
-        // Attach students if provided
+        $studentIds = null;
         if (isset($validated['student_ids']) && !empty($validated['student_ids'])) {
-            $session->students()->attach($validated['student_ids']);
+            $studentIds = $validated['student_ids'];
         } elseif ($validated['class_id']) {
-            // If class_id is provided, attach all students from the class
             $class = \App\Models\ClassModel::find($validated['class_id']);
             if ($class) {
                 $studentIds = $class->students()->pluck('students.id')->toArray();
+            }
+        }
+
+        $createdSessions = [];
+        foreach ($sessionDates as $sessionDate) {
+            $session = TutoringSession::create([
+                'date' => $sessionDate,
+                'start_time' => $validated['start_time'],
+                'end_time' => $validated['end_time'],
+                'teacher_id' => $validated['teacher_id'],
+                'class_id' => $validated['class_id'] ?? null,
+                'subject' => $validated['subject'],
+                'year_level' => $validated['year_level'] ?? null,
+                'location_type' => $locationType,
+                'location_detail' => $locationDetail,
+                'session_type' => $validated['session_type'],
+                'status' => $status,
+            ]);
+
+            if (!empty($studentIds)) {
                 $session->students()->attach($studentIds);
             }
+
+            $createdSessions[] = $session->load(['teacher.user', 'students.user', 'classModel']);
         }
 
         return response()->json([
             'success' => true,
-            'data' => $session->load(['teacher.user', 'students.user', 'classModel']),
-            'message' => 'Session created successfully',
+            'data' => count($createdSessions) === 1 ? $createdSessions[0] : $createdSessions,
+            'sessions_created' => count($createdSessions),
+            'message' => count($createdSessions) > 1
+                ? count($createdSessions).' sessions created successfully'
+                : 'Session created successfully',
         ], 201);
     }
 
