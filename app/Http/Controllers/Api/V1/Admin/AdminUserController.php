@@ -332,7 +332,21 @@ class AdminUserController extends Controller
     public function destroy($id)
     {
         $user = User::findOrFail($id);
-        $user->delete();
+
+        try {
+            $user->delete();
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Foreign key constraint (e.g. invoices/payments referencing this
+            // user) - can't hard-delete without losing billing history.
+            // Deactivate instead, same as packages/classes do.
+            $user->update(['is_active' => false]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'This user has related billing records and cannot be permanently deleted. Their account has been deactivated instead.',
+                'data' => ['deactivated' => true],
+            ]);
+        }
 
         return response()->json([
             'success' => true,
