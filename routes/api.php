@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\V1\Tutor\TutorLessonHistoryController;
 use App\Http\Controllers\Api\V1\Tutor\TutorLessonRequestController;
 use App\Http\Controllers\Api\V1\Admin\AdminCalendarController;
 use App\Http\Controllers\Api\V1\Admin\AdminAttendanceController;
+use App\Http\Controllers\Api\V1\Admin\AdminLessonRequestController;
 use App\Http\Controllers\Api\V1\Student\StudentDashboardController;
 use App\Http\Controllers\Api\V1\Student\StudentClassController;
 use App\Http\Controllers\Api\V1\Student\StudentAssignmentController;
@@ -91,6 +92,7 @@ Route::prefix('v1')->group(function () {
             // Calendar
             Route::get('/calendar/sessions', [AdminCalendarController::class, 'index']);
             Route::post('/calendar/sessions', [AdminCalendarController::class, 'store']);
+            Route::get('/lesson-requests', [AdminLessonRequestController::class, 'index']);
             Route::get('/calendar/sessions/{id}', [AdminCalendarController::class, 'show']);
             Route::put('/calendar/sessions/{id}', [AdminCalendarController::class, 'update']);
             Route::post('/calendar/sessions/{id}/notes', [AdminCalendarController::class, 'addNotes']);

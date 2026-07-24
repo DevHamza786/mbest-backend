@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Tutor;
 use App\Models\Message;
 use App\Models\TutoringSession;
+use App\Traits\ParsesLessonRequests;
 use Illuminate\Http\Request;
 
 class TutorLessonRequestController extends Controller
 {
+    use ParsesLessonRequests;
+
     /**
      * Get lesson requests for the tutor
      */
@@ -18,106 +21,15 @@ class TutorLessonRequestController extends Controller
         $user = $request->user();
         $tutor = Tutor::where('user_id', $user->id)->firstOrFail();
 
-        // Get messages where tutor is recipient and subject contains "lesson request"
-        $query = Message::where('recipient_id', $user->id)
-            ->where(function ($q) {
-                $q->where('subject', 'like', '%lesson request%')
-                  ->orWhere('subject', 'like', '%Lesson Request%');
-            })
-            ->with(['sender', 'recipient']);
-
-        // Filter by status if provided
-        // Note: Status filtering will be done after fetching messages
-        // since we need to check if a session was created from the request
+        $query = $this->lessonRequestMessageQuery()->where('recipient_id', $user->id);
 
         $perPage = $request->get('per_page', 15);
         $messages = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
-        // Transform messages to lesson request format
-        $lessonRequests = $messages->getCollection()->map(function ($message) use ($tutor) {
-            // Parse message body to extract lesson request details
-            $body = $message->body ?? '';
-            
-            // Try to extract JSON data from message body if it's structured
-            $data = json_decode($body, true);
-            if (!is_array($data)) {
-                $data = [];
-            }
-            
-            // Extract student and parent info from sender
-            $parentName = $message->sender->name ?? 'Unknown Parent';
-            $studentName = 'Unknown Student'; // This might need to be in message data
-            
-            // Try to get student name from message data or body
-            if (isset($data['student_name'])) {
-                $studentName = $data['student_name'];
-            } elseif (preg_match('/student[:\s]+([^\n]+)/i', $body, $matches)) {
-                $studentName = trim($matches[1]);
-            }
+        $lessonRequests = $messages->getCollection()->map(
+            fn ($message) => $this->transformLessonRequestMessage($message, $tutor)
+        );
 
-            // Extract lesson details
-            $lessonType = $data['lesson_type'] ?? $data['subject'] ?? 'General Lesson';
-            $preferredDate = $data['preferred_date'] ?? $data['date'] ?? null;
-            $preferredTime = $data['preferred_time'] ?? $data['time'] ?? null;
-            
-            // Handle duration - prefer duration string, fallback to duration_hours
-            $duration = $data['duration'] ?? null;
-            if (!$duration && isset($data['duration_hours'])) {
-                $durationHours = floatval($data['duration_hours']);
-                $duration = $durationHours == 1 ? '1 hour' : $durationHours . ' hours';
-            }
-            if (!$duration) {
-                $duration = '1 hour';
-            }
-            
-            // Extract message text - if JSON contains a message field, use that, otherwise use the body
-            $messageText = $data['message'] ?? $body;
-            
-            // Determine status - prioritize status stored in message data
-            $status = 'pending';
-            if (isset($data['status']) && in_array($data['status'], ['pending', 'approved', 'declined'])) {
-                $status = $data['status'];
-            } else {
-                // Fallback: check if a session was created from this message
-                if ($preferredDate && isset($data['session_id'])) {
-                    $relatedSession = TutoringSession::where('teacher_id', $tutor->id)
-                        ->where('id', $data['session_id'])
-                        ->first();
-                    
-                    if ($relatedSession) {
-                        $status = 'approved';
-                    }
-                } elseif ($preferredDate && $preferredTime) {
-                    // Try to match by date and time (less reliable)
-                    $timeFormatted = preg_match('/^\d{2}:\d{2}$/', $preferredTime) ? $preferredTime . ':00' : $preferredTime;
-                    $relatedSession = TutoringSession::where('teacher_id', $tutor->id)
-                        ->where('date', $preferredDate)
-                        ->where('start_time', 'like', substr($timeFormatted, 0, 5) . '%')
-                        ->first();
-                    
-                    if ($relatedSession) {
-                        $status = 'approved';
-                    }
-                }
-            }
-
-            return [
-                'id' => $message->id,
-                'student_name' => $studentName,
-                'parent_name' => $parentName,
-                'lesson_type' => $lessonType,
-                'preferred_date' => $preferredDate,
-                'preferred_time' => $preferredTime,
-                'duration' => $duration,
-                'duration_hours' => isset($data['duration_hours']) ? floatval($data['duration_hours']) : null,
-                'message' => $messageText,
-                'requested_at' => $message->created_at->toDateTimeString(),
-                'status' => $status,
-                'sender_id' => $message->sender_id,
-                'recipient_id' => $message->recipient_id,
-            ];
-        });
-        
         // Filter by status if provided
         if ($request->has('status') && $request->status !== 'all') {
             $lessonRequests = $lessonRequests->filter(function ($req) use ($request) {
