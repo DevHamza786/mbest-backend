@@ -165,7 +165,14 @@ class ResourceController extends Controller
             'title' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
             'category' => 'nullable|string|max:100',
+            'tags' => 'nullable|string',
+            'is_public' => 'sometimes|boolean',
         ]);
+
+        if (array_key_exists('tags', $validated)) {
+            $tags = !empty($validated['tags']) ? array_map('trim', explode(',', $validated['tags'])) : null;
+            $validated['tags'] = $tags;
+        }
 
         $resource->update($validated);
 
