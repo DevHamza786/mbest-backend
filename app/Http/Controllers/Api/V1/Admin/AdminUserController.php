@@ -11,6 +11,22 @@ use Illuminate\Support\Facades\Storage;
 
 class AdminUserController extends Controller
 {
+    /**
+     * All non-admin users, for admin to start a conversation with.
+     */
+    public function recipients(Request $request)
+    {
+        $users = User::where('role', '!=', 'admin')
+            ->select('id', 'name', 'email', 'role', 'avatar')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $users,
+        ]);
+    }
+
     public function index(Request $request)
     {
         $query = User::query();

@@ -61,6 +61,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/dashboard', [AdminDashboardController::class, 'index']);
             
             // Users management
+            Route::get('/users/recipients', [AdminUserController::class, 'recipients']);
             Route::get('/users', [AdminUserController::class, 'index']);
             Route::get('/users/stats', [AdminUserController::class, 'stats']);
             Route::get('/tutors/{id}', [AdminUserController::class, 'getTutor']);
