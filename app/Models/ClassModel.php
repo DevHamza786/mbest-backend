@@ -13,7 +13,7 @@ class ClassModel extends Model
 
     protected $fillable = [
         'name', 'code', 'tutor_id', 'description', 'category',
-        'level', 'capacity', 'enrolled', 'credits', 'duration',
+        'level', 'year_level', 'capacity', 'enrolled', 'credits', 'duration',
         'status', 'start_date', 'end_date'
     ];
 
