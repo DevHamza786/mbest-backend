@@ -60,11 +60,12 @@ class AdminUserController extends Controller
             $query->where('is_active', $request->boolean('is_active'));
         }
 
-        // Tutor department (matches tutors.department; narrows to users who have a tutor profile)
-        if ($request->filled('department')) {
-            $department = $request->input('department');
-            $query->whereHas('tutor', function ($q) use ($department) {
-                $q->where('department', 'like', '%' . $department . '%');
+        // Tutor subjects taught (matches tutors.specialization; narrows to users who have a tutor profile)
+        if ($request->filled('specialization')) {
+            $specialization = $request->input('specialization');
+            $query->whereHas('tutor', function ($q) use ($specialization) {
+                $q->whereJsonContains('specialization', $specialization)
+                    ->orWhere('specialization', 'like', '%' . $specialization . '%');
             });
         }
 
