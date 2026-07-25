@@ -14,19 +14,32 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $this->command->info('Starting database seeding...');
+        $this->command->info('🚀 Starting complete database seeding for MBEST LMS...');
         $this->command->newLine();
 
-        // Production/live testing: only seed a single admin user.
-        // (Other seeders are intentionally NOT executed to avoid dummy data.)
         $this->call([
-            AdminSeeder::class,
+            UserSeeder::class,
+            ClassSeeder::class,
+            FiveClassesForTutorSeeder::class,
+            SessionSeeder::class,
+            AssignmentSeeder::class,
+            GradeSeeder::class,
+            ResourceSeeder::class,
+            InvoiceSeeder::class,
+            LessonRequestSeeder::class,
+            MessageSeeder::class,
+            NotificationSeeder::class,
+            TutorAvailabilitySeeder::class,
+            SubscriptionSeeder::class,
         ]);
 
         $this->command->newLine();
-        $this->command->info('✅ Database seeding completed successfully!');
+        $this->command->info('🎉 All seeders executed successfully!');
         $this->command->newLine();
-        $this->command->info('Default login credentials:');
-        $this->command->info('  Admin: admin@mbest.com / password123');
+        $this->command->info('🔑 Demo Login Credentials (Password for all: Password123!)');
+        $this->command->info('   👑 Admin:   admin@mbest.com');
+        $this->command->info('   👨‍🏫 Tutor:   tutor@mbest.com');
+        $this->command->info('   👨‍👩‍👧 Parent:  parent@mbest.com');
+        $this->command->info('   🎓 Student: student@mbest.com');
     }
 }
