@@ -229,6 +229,8 @@ Route::prefix('v1')->group(function () {
         
         // Parent routes - Protected routes (require active subscription)
         Route::prefix('parent')->middleware(['role:parent', 'subscription.active'])->group(function () {
+            Route::get('/lesson-requests', [\App\Http\Controllers\Api\V1\Parent\ParentLessonRequestController::class, 'index']);
+            Route::post('/lesson-requests', [\App\Http\Controllers\Api\V1\Parent\ParentLessonRequestController::class, 'store']);
             Route::get('/dashboard', [ParentDashboardController::class, 'index']);
             
             // Children
