@@ -102,7 +102,7 @@ class AdminCalendarController extends Controller
             'student_ids.*' => 'exists:students,id',
             'repeat_days' => 'nullable|array',
             'repeat_days.*' => 'integer|min:0|max:6',
-            'repeat_until' => 'nullable|date|after_or_equal:date',
+            'repeat_until' => 'nullable|date|after_or_equal:date|before_or_equal:' . now()->addYear()->toDateString(),
             'materials' => 'nullable|array',
             'materials.*' => 'file|max:10240',
         ]);
@@ -143,7 +143,10 @@ class AdminCalendarController extends Controller
             $cursor = \Carbon\Carbon::parse($validated['date']);
             $until = \Carbon\Carbon::parse($validated['repeat_until']);
             $sessionDates = [];
-            while ($cursor->lte($until)) {
+            // Hard cap regardless of date range, as defense-in-depth against
+            // resource exhaustion from a pathological repeat_until value.
+            $maxSessions = 100;
+            while ($cursor->lte($until) && count($sessionDates) < $maxSessions) {
                 if (in_array((int) $cursor->dayOfWeek, $repeatDays, true)) {
                     $sessionDates[] = $cursor->toDateString();
                 }
