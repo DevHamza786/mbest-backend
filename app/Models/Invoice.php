@@ -13,8 +13,15 @@ class Invoice extends Model
         'invoice_number', 'student_id', 'parent_id', 'tutor_id', 'session_id',
         'amount', 'currency', 'status', 'due_date', 'paid_date',
         'issue_date', 'period_start', 'period_end', 'description',
-        'tutor_address', 'notes', 'payment_method', 'transaction_id'
+        'tutor_address', 'notes', 'payment_method', 'transaction_id', 'receipt_file'
     ];
+
+    protected $appends = ['receipt_url'];
+
+    public function getReceiptUrlAttribute(): ?string
+    {
+        return $this->receipt_file ? \Illuminate\Support\Facades\Storage::url($this->receipt_file) : null;
+    }
 
     protected function casts(): array
     {

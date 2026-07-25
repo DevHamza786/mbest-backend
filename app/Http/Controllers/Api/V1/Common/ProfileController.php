@@ -16,6 +16,11 @@ class ProfileController extends Controller
         // Load role-specific relationships
         $user->load(['tutor', 'student', 'parentModel']);
 
+        if ($user->role === 'tutor' && $user->tutor) {
+            $user->tutor->syncProfileCompleteFlag($user);
+            $user->tutor->setAttribute('completion_details', $user->tutor->getProfileCompletionDetails($user));
+        }
+
         // If user is a student, load their parent(s) through the parent_student pivot table
         if ($user->role === 'student' && $user->student) {
             // Get the first parent through the parent_student pivot table
@@ -159,6 +164,11 @@ class ProfileController extends Controller
         }
 
         $updatedUser = $user->fresh(['tutor', 'student', 'parentModel']);
+
+        if ($updatedUser->role === 'tutor' && $updatedUser->tutor) {
+            $updatedUser->tutor->syncProfileCompleteFlag($updatedUser);
+            $updatedUser->tutor->setAttribute('completion_details', $updatedUser->tutor->getProfileCompletionDetails($updatedUser));
+        }
         
         // If user is a student, load their parent(s) through the parent_student pivot table
         if ($updatedUser->role === 'student' && $updatedUser->student) {

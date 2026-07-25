@@ -15,12 +15,17 @@ class ResourceController extends Controller
         $query = Resource::query();
 
         // Visibility: admins see everything. Everyone else sees public
-        // resources, their own uploads, and private resources scoped to a
-        // class they belong to (as tutor, enrolled student, or student's parent).
+        // resources, their own uploads, private resources scoped to a
+        // class they belong to, or resources assigned specifically to them.
+        $query->with(['assignedUsers', 'uploadedBy']);
+
         if ($user->role !== 'admin') {
             $query->where(function ($q) use ($user) {
                 $q->where('is_public', true)
-                    ->orWhere('uploaded_by', $user->id);
+                    ->orWhere('uploaded_by', $user->id)
+                    ->orWhereHas('assignedUsers', function ($au) use ($user) {
+                        $au->where('users.id', $user->id);
+                    });
 
                 if ($user->role === 'tutor' && $user->tutor) {
                     $tutorId = $user->tutor->id;
@@ -103,6 +108,7 @@ class ResourceController extends Controller
             'url' => 'required_if:type,link|url',
             'file' => 'required_if:type,document,pdf,video|file|max:102400',
             'is_public' => 'nullable|boolean',
+            'user_ids' => 'nullable',
         ]);
 
         $resourceData = [
@@ -134,6 +140,16 @@ class ResourceController extends Controller
         }
 
         $resource = Resource::create($resourceData);
+
+        if ($request->has('user_ids')) {
+            $userIds = $request->input('user_ids');
+            if (is_string($userIds)) {
+                $userIds = json_decode($userIds, true) ?? array_filter(array_map('trim', explode(',', $userIds)));
+            }
+            if (is_array($userIds)) {
+                $resource->assignedUsers()->sync($userIds);
+            }
+        }
 
         return response()->json([
             'success' => true,
@@ -195,6 +211,7 @@ class ResourceController extends Controller
             'category' => 'nullable|string|max:100',
             'tags' => 'nullable|string',
             'is_public' => 'sometimes|boolean',
+            'user_ids' => 'nullable',
         ]);
 
         if (array_key_exists('tags', $validated)) {
@@ -203,6 +220,16 @@ class ResourceController extends Controller
         }
 
         $resource->update($validated);
+
+        if ($request->has('user_ids')) {
+            $userIds = $request->input('user_ids');
+            if (is_string($userIds)) {
+                $userIds = json_decode($userIds, true) ?? array_filter(array_map('trim', explode(',', $userIds)));
+            }
+            if (is_array($userIds)) {
+                $resource->assignedUsers()->sync($userIds);
+            }
+        }
 
         return response()->json([
             'success' => true,

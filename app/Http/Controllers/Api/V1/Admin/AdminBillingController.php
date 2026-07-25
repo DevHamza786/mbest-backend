@@ -240,7 +240,18 @@ class AdminBillingController extends Controller
             'paid_date' => 'nullable|date',
             'payment_method' => 'nullable|string|max:50',
             'transaction_id' => 'nullable|string',
+            'receipt_file' => 'nullable|file|mimes:pdf,png,jpg,jpeg|max:10240',
         ]);
+
+        if ($request->hasFile('receipt_file')) {
+            $fileService = new \App\Services\FileService();
+            $stored = $fileService->storeFile($request->file('receipt_file'), 'receipts');
+            $validated['receipt_file'] = $stored['file_path'];
+        }
+
+        if (isset($validated['status']) && $validated['status'] === 'paid' && empty($validated['paid_date'])) {
+            $validated['paid_date'] = now();
+        }
 
         $invoice->update($validated);
 

@@ -100,6 +100,9 @@ class TutorAssignmentController extends Controller
             'description' => 'nullable|string',
             'instructions' => 'nullable|string',
             'class_id' => 'nullable|exists:classes,id',
+            'target_type' => 'nullable|string|in:class,student,group',
+            'target_student_id' => 'nullable|exists:students,id',
+            'target_group_id' => 'nullable|string',
             // Due date must be in the future (tomorrow or later)
             'due_date' => 'required|date|after:today',
             'max_points' => 'required|integer|min:1',

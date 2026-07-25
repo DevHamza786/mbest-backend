@@ -124,6 +124,16 @@ class StudentQuestionController extends Controller
                     'file_size' => $file->getSize(),
                 ]);
             }
+        } elseif ($request->hasFile('file')) {
+            $file = $request->file('file');
+            $path = $file->store('question-attachments', 'public');
+            QuestionAttachment::create([
+                'question_id' => $question->id,
+                'file_path' => $path,
+                'file_name' => $file->getClientOriginalName(),
+                'file_type' => $file->getMimeType(),
+                'file_size' => $file->getSize(),
+            ]);
         }
 
         $question->load(['tutor.user', 'assignment', 'classModel', 'attachments']);

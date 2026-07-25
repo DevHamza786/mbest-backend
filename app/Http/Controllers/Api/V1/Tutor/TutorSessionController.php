@@ -219,6 +219,15 @@ class TutorSessionController extends Controller
         if (! $locationType && isset($validated['location'])) {
             $locationType = $validated['location'] === 'online' ? 'online' : 'onsite';
         }
+        if (! $locationDetail) {
+            if ($request->filled('meeting_link')) {
+                $locationDetail = $request->input('meeting_link');
+            } elseif ($request->filled('room')) {
+                $locationDetail = 'Room ' . $request->input('room');
+            } elseif ($request->filled('address')) {
+                $locationDetail = $request->input('address');
+            }
+        }
         if (! $locationType) {
             return response()->json([
                 'success' => false,
@@ -367,6 +376,16 @@ class TutorSessionController extends Controller
             $validated['location_type'] = $validated['location'] === 'online' ? 'online' : 'onsite';
         }
         unset($validated['location']);
+
+        if (empty($validated['location_detail'])) {
+            if ($request->filled('meeting_link')) {
+                $validated['location_detail'] = $request->input('meeting_link');
+            } elseif ($request->filled('room')) {
+                $validated['location_detail'] = 'Room ' . $request->input('room');
+            } elseif ($request->filled('address')) {
+                $validated['location_detail'] = $request->input('address');
+            }
+        }
 
         // Verify class belongs to tutor if provided
         if ($request->has('class_id') && $request->class_id) {

@@ -155,11 +155,13 @@ class ResourceRequestController extends Controller
 
         $resourceId = $resourceRequest->resource_id;
 
+        $fulfilledFile = null;
         // If the reviewer attaches a file (typically when marking fulfilled),
-        // upload it as a real Resource and link it to this request.
+        // upload it as a real Resource and link it to this request, and save fulfilled_file.
         if ($request->hasFile('file')) {
             $file = $request->file('file');
             $storedPath = $file->store('resources', 'public');
+            $fulfilledFile = $storedPath;
 
             $resource = \App\Models\Resource::create([
                 'title' => $resourceRequest->title,
@@ -169,9 +171,6 @@ class ResourceRequestController extends Controller
                 'file_path' => $storedPath,
                 'file_size' => $file->getSize(),
                 'uploaded_by' => $user->id,
-                // Public so the requesting student (and anyone else) can see
-                // it immediately - it was created specifically as a response
-                // to a request, not a private working file.
                 'is_public' => true,
             ]);
 
@@ -184,6 +183,7 @@ class ResourceRequestController extends Controller
             'review_notes' => $validated['review_notes'] ?? null,
             'reviewed_at' => now(),
             'resource_id' => $resourceId,
+            'fulfilled_file' => $fulfilledFile ?? $resourceRequest->fulfilled_file,
         ]);
 
         // Notify the student about the status update

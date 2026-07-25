@@ -142,9 +142,9 @@ class StudentAssignmentController extends Controller
             'submitted_at' => now(),
         ];
 
-        if ($assignment->submission_type === 'file') {
-            $comment = $validated['student_comment'] ?? null;
-            $submissionData['student_comment'] = ($comment !== '' ? $comment : null);
+        $comment = $request->input('student_comment') ?? $request->input('comment');
+        if ($comment !== null) {
+            $submissionData['student_comment'] = $comment;
         }
 
         // Handle file submission

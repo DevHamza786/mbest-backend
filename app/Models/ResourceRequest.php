@@ -11,8 +11,15 @@ class ResourceRequest extends Model
 
     protected $fillable = [
         'title', 'description', 'category', 'type', 'priority',
-        'status', 'requested_by', 'reviewed_by', 'review_notes', 'reviewed_at', 'resource_id'
+        'status', 'requested_by', 'reviewed_by', 'review_notes', 'reviewed_at', 'resource_id', 'fulfilled_file'
     ];
+
+    protected $appends = ['fulfilled_file_url'];
+
+    public function getFulfilledFileUrlAttribute(): ?string
+    {
+        return $this->fulfilled_file ? \Illuminate\Support\Facades\Storage::url($this->fulfilled_file) : null;
+    }
 
     protected function casts(): array
     {

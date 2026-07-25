@@ -193,6 +193,8 @@ Route::prefix('v1')->group(function () {
             
             // Classes
             Route::get('/classes', [StudentClassController::class, 'index']);
+            Route::get('/classes/available', [StudentClassController::class, 'available']);
+            Route::post('/classes/join', [StudentClassController::class, 'joinByCode']);
             Route::get('/classes/{id}', [StudentClassController::class, 'show']);
             Route::post('/classes/{id}/enroll', [StudentClassController::class, 'enroll']);
             Route::post('/classes/{id}/unenroll', [StudentClassController::class, 'unenroll']);

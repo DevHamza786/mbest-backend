@@ -151,5 +151,60 @@ class StudentClassController extends Controller
             'message' => 'Unenrolled successfully',
         ]);
     }
+
+    public function available(Request $request)
+    {
+        $user = $request->user();
+        $student = Student::where('user_id', $user->id)->first();
+        $enrolledIds = $student ? $student->classes()->pluck('classes.id')->toArray() : [];
+
+        $classes = ClassModel::where('status', 'active')
+            ->whereNotIn('id', $enrolledIds)
+            ->with(['tutor.user', 'schedules'])
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $classes,
+        ]);
+    }
+
+    public function joinByCode(Request $request)
+    {
+        $request->validate([
+            'class_code' => 'required|string',
+        ]);
+
+        $user = $request->user();
+        $student = Student::where('user_id', $user->id)->firstOrFail();
+
+        $code = strtoupper(trim($request->class_code));
+        $class = ClassModel::where('class_code', $code)
+            ->orWhere('id', $request->class_code)
+            ->first();
+
+        if (!$class) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid class code or ID',
+            ], 404);
+        }
+
+        if ($student->classes()->where('classes.id', $class->id)->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Already enrolled in this class',
+            ], 400);
+        }
+
+        $student->classes()->attach($class->id);
+        $class->increment('enrolled');
+
+        return response()->json([
+            'success' => true,
+            'data' => $class->load(['tutor.user', 'schedules']),
+            'message' => 'Successfully joined class',
+        ]);
+    }
 }
 
