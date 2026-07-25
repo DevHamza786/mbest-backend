@@ -150,13 +150,40 @@ class ResourceRequestController extends Controller
         $validated = $request->validate([
             'status' => 'required|in:pending,approved,rejected,fulfilled',
             'review_notes' => 'nullable|string',
+            'file' => 'nullable|file|max:10240',
         ]);
+
+        $resourceId = $resourceRequest->resource_id;
+
+        // If the reviewer attaches a file (typically when marking fulfilled),
+        // upload it as a real Resource and link it to this request.
+        if ($request->hasFile('file')) {
+            $file = $request->file('file');
+            $storedPath = $file->store('resources', 'public');
+
+            $resource = \App\Models\Resource::create([
+                'title' => $resourceRequest->title,
+                'description' => $validated['review_notes'] ?? $resourceRequest->description,
+                'type' => $resourceRequest->type ?? 'document',
+                'category' => $resourceRequest->category,
+                'file_path' => $storedPath,
+                'file_size' => $file->getSize(),
+                'uploaded_by' => $user->id,
+                // Public so the requesting student (and anyone else) can see
+                // it immediately - it was created specifically as a response
+                // to a request, not a private working file.
+                'is_public' => true,
+            ]);
+
+            $resourceId = $resource->id;
+        }
 
         $resourceRequest->update([
             'status' => $validated['status'],
             'reviewed_by' => $user->id,
             'review_notes' => $validated['review_notes'] ?? null,
             'reviewed_at' => now(),
+            'resource_id' => $resourceId,
         ]);
 
         // Notify the student about the status update

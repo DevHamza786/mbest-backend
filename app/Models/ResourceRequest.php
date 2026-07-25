@@ -11,7 +11,7 @@ class ResourceRequest extends Model
 
     protected $fillable = [
         'title', 'description', 'category', 'type', 'priority',
-        'status', 'requested_by', 'reviewed_by', 'review_notes', 'reviewed_at'
+        'status', 'requested_by', 'reviewed_by', 'review_notes', 'reviewed_at', 'resource_id'
     ];
 
     protected function casts(): array
@@ -30,6 +30,11 @@ class ResourceRequest extends Model
     public function reviewedBy()
     {
         return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function resource()
+    {
+        return $this->belongsTo(Resource::class, 'resource_id');
     }
 }
 
