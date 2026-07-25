@@ -11,7 +11,35 @@ class ResourceController extends Controller
 {
     public function index(Request $request)
     {
+        $user = $request->user();
         $query = Resource::query();
+
+        // Visibility: admins see everything. Everyone else sees public
+        // resources, their own uploads, and private resources scoped to a
+        // class they belong to (as tutor, enrolled student, or student's parent).
+        if ($user->role !== 'admin') {
+            $query->where(function ($q) use ($user) {
+                $q->where('is_public', true)
+                    ->orWhere('uploaded_by', $user->id);
+
+                if ($user->role === 'tutor' && $user->tutor) {
+                    $tutorId = $user->tutor->id;
+                    $q->orWhereHas('classModel', function ($c) use ($tutorId) {
+                        $c->where('tutor_id', $tutorId);
+                    });
+                } elseif ($user->role === 'student' && $user->student) {
+                    $studentId = $user->student->id;
+                    $q->orWhereHas('classModel.students', function ($c) use ($studentId) {
+                        $c->where('students.id', $studentId);
+                    });
+                } elseif ($user->role === 'parent') {
+                    $userId = $user->id;
+                    $q->orWhereHas('classModel.students.parents', function ($c) use ($userId) {
+                        $c->where('users.id', $userId);
+                    });
+                }
+            });
+        }
 
         // Filter by class
         if ($request->has('class_id')) {
