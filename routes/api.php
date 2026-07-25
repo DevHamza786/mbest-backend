@@ -46,6 +46,25 @@ use App\Http\Controllers\Api\V1\Parent\ParentStudentController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
+    // Public Health Check Endpoint
+    Route::match(['get', 'post'], '/health', function () {
+        $dbConnected = false;
+        try {
+            \DB::connection()->getPdo();
+            $dbConnected = true;
+        } catch (\Exception $e) {
+            $dbConnected = false;
+        }
+
+        return response()->json([
+            'status' => 'ok',
+            'message' => 'MBEST LMS API is operational',
+            'timestamp' => now()->toIso8601String(),
+            'database' => $dbConnected ? 'connected' : 'error',
+            'environment' => config('app.env'),
+        ]);
+    });
+
     // Public routes
     Route::post('/auth/register', [AuthController::class, 'register']);
     Route::post('/auth/login', [AuthController::class, 'login']);
