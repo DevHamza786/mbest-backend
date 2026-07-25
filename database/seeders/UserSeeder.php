@@ -52,8 +52,8 @@ class UserSeeder extends Seeder
                 'qualifications' => 'B.Ed Mathematics, M.Sc Physics',
                 'experience_years' => 8,
                 'wwcc_number' => 'WWC1234567E',
-                'wwcc_expiry' => '2028-12-31',
-                'max_group_size' => 10,
+                'wwcc_expiry_date' => '2028-12-31',
+                'max_students_per_group' => 10,
                 'profile_complete' => true,
                 'is_available' => true,
             ]
@@ -77,8 +77,6 @@ class UserSeeder extends Seeder
             ['user_id' => $parentUser->id],
             [
                 'relationship' => 'father',
-                'occupation' => 'Software Engineer',
-                'emergency_contact' => '+61434567890',
             ]
         );
 
@@ -99,11 +97,10 @@ class UserSeeder extends Seeder
         $student = Student::firstOrCreate(
             ['user_id' => $studentUser->id],
             [
-                'parent_id' => $parent->id,
+                'parent_id' => $parentUser->id,
+                'enrollment_id' => 'STU-2026-001',
                 'school' => 'Melbourne High School',
                 'grade' => 'Year 11',
-                'status' => 'active',
-                'enrolled_at' => now(),
             ]
         );
 
