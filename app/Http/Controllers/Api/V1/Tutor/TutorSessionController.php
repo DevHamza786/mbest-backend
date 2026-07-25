@@ -209,6 +209,9 @@ class TutorSessionController extends Controller
             'class_id' => 'nullable|exists:classes,id',
             'materials' => 'nullable|array',
             'materials.*' => 'file|max:10240|mimes:pdf,doc,docx,txt,rtf,ppt,pptx,xls,xlsx,jpg,jpeg,png',
+            'repeat_days' => 'nullable|array',
+            'repeat_days.*' => 'integer|min:0|max:6',
+            'repeat_until' => 'nullable|date|after_or_equal:date',
         ]);
 
         $locationType = $validated['location_type'] ?? null;
@@ -237,52 +240,81 @@ class TutorSessionController extends Controller
             }
         }
 
-        $session = TutoringSession::create([
-            'date' => $validated['date'],
-            'start_time' => $validated['start_time'],
-            'end_time' => $validated['end_time'],
-            'teacher_id' => $tutor->id,
-            'class_id' => $validated['class_id'] ?? null,
-            'subject' => $validated['subject'],
-            'year_level' => $validated['year_level'] ?? null,
-            'location_type' => $locationType,
-            'location_detail' => $locationDetail,
-            'session_type' => $validated['session_type'],
-            'status' => 'planned',
-        ]);
+        // Build the list of session dates: just the given date, unless the
+        // tutor picked specific weekdays to repeat on through an end date.
+        $sessionDates = [$validated['date']];
+        if (!empty($validated['repeat_days']) && !empty($validated['repeat_until'])) {
+            $repeatDays = $validated['repeat_days'];
+            $cursor = \Carbon\Carbon::parse($validated['date']);
+            $until = \Carbon\Carbon::parse($validated['repeat_until']);
+            $sessionDates = [];
+            while ($cursor->lte($until)) {
+                if (in_array((int) $cursor->dayOfWeek, $repeatDays, true)) {
+                    $sessionDates[] = $cursor->toDateString();
+                }
+                $cursor->addDay();
+            }
+            if (empty($sessionDates)) {
+                $sessionDates = [$validated['date']];
+            }
+        }
 
-        // Attach students
-        $session->students()->attach($validated['student_ids']);
-
-        // Store optional tutor-provided materials for the session
+        $storedMaterials = [];
         if ($request->hasFile('materials')) {
             foreach ((array) $request->file('materials') as $material) {
                 if (!$material) {
                     continue;
                 }
-
-                $storedPath = $material->store('tutoring_session_materials', 'public');
-
-                $session->sessionFiles()->create([
+                $storedMaterials[] = [
                     'file_name' => $material->getClientOriginalName(),
-                    'file_path' => $storedPath,
+                    'file_path' => $material->store('tutoring_session_materials', 'public'),
                     'mime_type' => $material->getClientMimeType(),
                     'file_size' => $material->getSize(),
-                ]);
+                ];
             }
         }
 
-        $session->load(['students.user', 'sessionFiles']);
-        $session->sessionFiles?->each(function ($file) {
-            if (!empty($file->file_path)) {
-                $file->file_url = Storage::url($file->file_path);
+        $createdSessions = [];
+        foreach ($sessionDates as $sessionDate) {
+            $session = TutoringSession::create([
+                'date' => $sessionDate,
+                'start_time' => $validated['start_time'],
+                'end_time' => $validated['end_time'],
+                'teacher_id' => $tutor->id,
+                'class_id' => $validated['class_id'] ?? null,
+                'subject' => $validated['subject'],
+                'year_level' => $validated['year_level'] ?? null,
+                'location_type' => $locationType,
+                'location_detail' => $locationDetail,
+                'session_type' => $validated['session_type'],
+                'status' => 'planned',
+            ]);
+
+            $session->students()->attach($validated['student_ids']);
+
+            foreach ($storedMaterials as $material) {
+                $session->sessionFiles()->create($material);
             }
-        });
+
+            $session->load(['students.user', 'sessionFiles']);
+            $session->sessionFiles?->each(function ($file) {
+                if (!empty($file->file_path)) {
+                    $file->file_url = Storage::url($file->file_path);
+                }
+            });
+
+            $createdSessions[] = $session;
+        }
+
+        $session = $createdSessions[0];
 
         return response()->json([
             'success' => true,
-            'data' => $session,
-            'message' => 'Session created successfully',
+            'data' => count($createdSessions) === 1 ? $session : $createdSessions,
+            'sessions_created' => count($createdSessions),
+            'message' => count($createdSessions) > 1
+                ? count($createdSessions).' sessions created successfully'
+                : 'Session created successfully',
         ], 201);
     }
 
