@@ -227,6 +227,8 @@ class AdminUserController extends Controller
             ],
             'date_of_birth' => 'nullable|date|before_or_equal:today',
             'address' => 'nullable|string',
+            'parent_id' => 'nullable|exists:users,id',
+            'grade' => 'nullable|string|max:50',
         ]);
 
         if (isset($validated['phone']) && $validated['phone'] !== null) {
@@ -249,6 +251,18 @@ class AdminUserController extends Controller
                 ['user_id' => $user->id],
                 ['is_available' => true]
             );
+        }
+
+        // Ensure student role always has a linked Student profile with an
+        // auto-generated enrollment ID (previously this endpoint created a
+        // bare User with no Student row at all).
+        if ($validated['role'] === 'student') {
+            \App\Models\Student::create([
+                'user_id' => $user->id,
+                'parent_id' => $validated['parent_id'] ?? null,
+                'enrollment_id' => app(\App\Services\StudentService::class)->generateEnrollmentId(),
+                'grade' => $validated['grade'] ?? null,
+            ]);
         }
 
         return response()->json([
