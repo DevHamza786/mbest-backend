@@ -30,6 +30,7 @@ class DatabaseSeeder extends Seeder
             MessageSeeder::class,
             NotificationSeeder::class,
             TutorAvailabilitySeeder::class,
+            PackageSeeder::class,
             SubscriptionSeeder::class,
         ]);
 

@@ -4,7 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Subscription;
 use App\Models\Student;
-use App\Models\ParentModel;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Carbon\Carbon;
 
@@ -16,67 +16,57 @@ class SubscriptionSeeder extends Seeder
     public function run(): void
     {
         $students = Student::all();
+        $parentUser = User::where('role', 'parent')->first() ?? User::first();
 
         if ($students->isEmpty()) {
             $this->command->warn('Please run UserSeeder first!');
             return;
         }
 
-        $planTypes = ['monthly', 'quarterly', 'semester', 'annual'];
-        $planNames = ['Basic Plan', 'Standard Plan', 'Premium Plan', 'Elite Plan'];
-        $billingCycles = ['monthly', 'quarterly', 'yearly'];
-        $statuses = ['active', 'expired', 'cancelled', 'pending'];
+        $plans = [
+            [
+                'name' => 'HSC Mathematics Extension 1 Package',
+                'type' => 'monthly',
+                'cycle' => 'monthly',
+                'price' => 299.00,
+            ],
+            [
+                'name' => '1-on-1 Premium Tutoring (Physics & Chemistry)',
+                'type' => 'semester',
+                'cycle' => 'quarterly',
+                'price' => 450.00,
+            ],
+            [
+                'name' => 'Elite All-Access Annual Pass',
+                'type' => 'annual',
+                'cycle' => 'yearly',
+                'price' => 2499.00,
+            ],
+        ];
 
-        foreach ($students as $student) {
-            $parentUser = $student->parents()->first(); // This returns a User, not ParentModel
-            
-            // 70% of students have subscriptions
-            if (rand(0, 10) < 7) {
-                $planType = $planTypes[array_rand($planTypes)];
-                $startDate = Carbon::now()->subMonths(rand(0, 6));
-                
-                // Calculate end date based on plan type
-                $endDate = match($planType) {
-                    'monthly' => $startDate->copy()->addMonth(),
-                    'quarterly' => $startDate->copy()->addMonths(3),
-                    'semester' => $startDate->copy()->addMonths(6),
-                    'annual' => $startDate->copy()->addYear(),
-                    default => $startDate->copy()->addMonth(),
-                };
+        foreach ($students as $index => $student) {
+            $plan = $plans[$index % count($plans)];
+            $startDate = Carbon::now()->subMonths(1);
+            $endDate = Carbon::now()->addMonths(5);
 
-                $status = $endDate->isPast() ? 'expired' : ($statuses[array_rand($statuses)]);
-                $billingCycle = match($planType) {
-                    'monthly' => 'monthly',
-                    'quarterly' => 'quarterly',
-                    'semester', 'annual' => 'yearly',
-                    default => 'monthly',
-                };
-                $price = match($planType) {
-                    'monthly' => rand(200, 400),
-                    'quarterly' => rand(500, 1000),
-                    'semester' => rand(1000, 1800),
-                    'annual' => rand(2000, 3500),
-                    default => 200,
-                };
-
-                Subscription::create([
-                    'student_id' => $student->id,
-                    'parent_id' => $parentUser ? $parentUser->id : null,
-                    'plan_type' => $planType,
-                    'plan_name' => $planNames[array_rand($planNames)],
-                    'price' => $price,
-                    'currency' => 'USD',
-                    'billing_cycle' => $billingCycle,
+            Subscription::updateOrCreate(
+                ['student_id' => $student->id],
+                [
+                    'parent_id' => $student->parent_id ?? ($parentUser ? $parentUser->id : null),
+                    'plan_type' => $plan['type'],
+                    'plan_name' => $plan['name'],
+                    'price' => $plan['price'],
+                    'currency' => 'AUD',
+                    'billing_cycle' => $plan['cycle'],
                     'start_date' => $startDate,
                     'end_date' => $endDate,
-                    'status' => $status,
-                    'auto_renew' => rand(0, 10) < 7, // 70% auto-renew
-                ]);
-            }
+                    'status' => 'active',
+                    'auto_renew' => true,
+                ]
+            );
         }
 
-        $this->command->info('Subscriptions seeded successfully!');
-        $this->command->info('Total: ' . Subscription::count() . ' subscriptions created');
+        $this->command->info('✅ Student subscriptions seeded successfully!');
+        $this->command->info('   Total: ' . Subscription::count() . ' subscriptions created');
     }
 }
-
