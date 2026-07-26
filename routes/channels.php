@@ -41,14 +41,27 @@ Broadcast::channel('chat.{threadId}', function ($user, $threadId) {
             return false;
         }
         
-        // Check if user is part of this thread
+        // Check if threadId is canonical format thread-X-Y
+        if (preg_match('/^thread-(\d+)-(\d+)$/', $threadId, $matches)) {
+            $p1 = (int) $matches[1];
+            $p2 = (int) $matches[2];
+            if ((int)$user->id === $p1 || (int)$user->id === $p2) {
+                \Log::info('Channel authorization granted by canonical thread ID match', [
+                    'user_id' => $user->id,
+                    'thread_id' => $threadId,
+                ]);
+                return true;
+            }
+        }
+
+        // Fallback: Check if user is part of any message in this thread
         $message = \App\Models\Message::where('thread_id', $threadId)
             ->where(function ($q) use ($user) {
                 $q->where('sender_id', $user->id)
                   ->orWhere('recipient_id', $user->id);
             })
             ->first();
-        
+
         $authorized = $message !== null;
         
         \Log::info('Channel authorization result', [

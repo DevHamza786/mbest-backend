@@ -23,7 +23,25 @@ class MessageController extends Controller
 
         // Filter by thread
         if ($request->has('thread_id')) {
-            $query->where('thread_id', $request->thread_id);
+            $threadId = $request->thread_id;
+            
+            // If thread_id matches format thread-X-Y, get all messages between participant X and participant Y
+            if (preg_match('/^thread-(\d+)-(\d+)$/', $threadId, $matches)) {
+                $p1 = (int) $matches[1];
+                $p2 = (int) $matches[2];
+                $query->where(function ($q) use ($threadId, $p1, $p2) {
+                    $q->where('thread_id', $threadId)
+                      ->orWhere(function ($q2) use ($p1, $p2) {
+                          $q2->where(function ($sub) use ($p1, $p2) {
+                              $sub->where('sender_id', $p1)->where('recipient_id', $p2);
+                          })->orWhere(function ($sub) use ($p1, $p2) {
+                              $sub->where('sender_id', $p2)->where('recipient_id', $p1);
+                          });
+                      });
+                });
+            } else {
+                $query->where('thread_id', $threadId);
+            }
         }
 
         // Filter unread only
@@ -32,8 +50,8 @@ class MessageController extends Controller
                   ->where('is_read', false);
         }
 
-        $perPage = $request->get('per_page', 15);
-        $messages = $query->orderBy('created_at', 'desc')->paginate($perPage);
+        $perPage = $request->get('per_page', 100);
+        $messages = $query->orderBy('created_at', 'asc')->paginate($perPage);
 
         return response()->json([
             'success' => true,
@@ -55,13 +73,20 @@ class MessageController extends Controller
             'attachments.*' => 'file|max:10240',
         ]);
 
-        // Generate thread_id if not provided
-        $threadId = $validated['thread_id'] ?? 'thread-' . uniqid();
+        $recipientId = (int) $validated['recipient_id'];
+        $u1 = min($user->id, $recipientId);
+        $u2 = max($user->id, $recipientId);
+        $canonicalThreadId = "thread-{$u1}-{$u2}";
+
+        $threadId = $validated['thread_id'] ?? $canonicalThreadId;
+        if (empty($threadId) || !preg_match('/^thread-\d+-\d+$/', $threadId)) {
+            $threadId = $canonicalThreadId;
+        }
 
         $message = Message::create([
             'thread_id' => $threadId,
             'sender_id' => $user->id,
-            'recipient_id' => $validated['recipient_id'],
+            'recipient_id' => $recipientId,
             'subject' => $validated['subject'],
             'body' => $validated['body'],
             'is_read' => false,
@@ -86,8 +111,6 @@ class MessageController extends Controller
         $message->load(['sender', 'recipient', 'attachments']);
 
         // Broadcast the message to the thread channel
-        // Note: Using broadcast() instead of ->toOthers() so sender also receives it
-        // The frontend will handle duplicate prevention
         try {
             \Log::info('Broadcasting message', [
                 'message_id' => $message->id,
@@ -96,7 +119,6 @@ class MessageController extends Controller
                 'sender_id' => $message->sender_id,
                 'recipient_id' => $message->recipient_id,
             ]);
-            // Broadcast the message - uses default broadcaster (reverb)
             broadcast(new MessageSent($message));
             \Log::info('Message broadcasted successfully');
         } catch (\Exception $e) {
@@ -125,7 +147,7 @@ class MessageController extends Controller
         ->with(['sender', 'recipient', 'attachments'])
         ->findOrFail($id);
 
-        // Mark as read if recipient (only when explicitly viewing)
+        // Mark as read if recipient
         if ($message->recipient_id === $user->id && !$message->is_read) {
             $message->update([
                 'is_read' => true,
@@ -187,61 +209,51 @@ class MessageController extends Controller
     {
         $user = $request->user();
 
-        $threads = Message::where(function ($q) use ($user) {
+        $allMessages = Message::where(function ($q) use ($user) {
             $q->where('sender_id', $user->id)
               ->orWhere('recipient_id', $user->id);
         })
-        ->select('thread_id')
-        ->distinct()
-        ->get()
-        ->pluck('thread_id');
+        ->with(['sender', 'recipient'])
+        ->orderBy('created_at', 'desc')
+        ->get();
 
-        $threadData = [];
-        foreach ($threads as $threadId) {
-            $lastMessage = Message::where('thread_id', $threadId)
-                ->where(function ($q) use ($user) {
-                    $q->where('sender_id', $user->id)
-                      ->orWhere('recipient_id', $user->id);
-                })
-                ->with(['sender', 'recipient'])
-                ->orderBy('created_at', 'desc')
-                ->first();
+        $groupedThreads = [];
 
-            // Skip if no last message found (shouldn't happen, but safety check)
-            if (!$lastMessage) {
-                continue;
+        foreach ($allMessages as $msg) {
+            $otherUserId = $msg->sender_id === $user->id ? $msg->recipient_id : $msg->sender_id;
+            $u1 = min($user->id, $otherUserId);
+            $u2 = max($user->id, $otherUserId);
+            $canonicalThreadId = "thread-{$u1}-{$u2}";
+
+            if (!isset($groupedThreads[$canonicalThreadId])) {
+                $participant = $msg->sender_id === $user->id ? $msg->recipient : $msg->sender;
+                $groupedThreads[$canonicalThreadId] = [
+                    'thread_id' => $canonicalThreadId,
+                    'last_message' => [
+                        'id' => $msg->id,
+                        'subject' => $msg->subject,
+                        'body' => $msg->body,
+                        'is_read' => $msg->is_read,
+                        'is_important' => $msg->is_important,
+                        'created_at' => $msg->created_at->toIso8601String(),
+                        'sender' => $msg->sender,
+                    ],
+                    'unread_count' => 0,
+                    'participant' => $participant,
+                ];
             }
 
-            $unreadCount = Message::where('thread_id', $threadId)
-                ->where('recipient_id', $user->id)
-                ->where('is_read', false)
-                ->count();
-
-            $participant = $lastMessage->sender_id === $user->id 
-                ? $lastMessage->recipient 
-                : $lastMessage->sender;
-
-            $threadData[] = [
-                'thread_id' => $threadId,
-                'last_message' => [
-                    'id' => $lastMessage->id,
-                    'subject' => $lastMessage->subject,
-                    'body' => $lastMessage->body,
-                    'is_read' => $lastMessage->is_read,
-                    'is_important' => $lastMessage->is_important,
-                    'created_at' => $lastMessage->created_at,
-                    'sender' => $lastMessage->sender,
-                ],
-                'unread_count' => $unreadCount,
-                'participant' => $participant,
-            ];
+            if ($msg->recipient_id === $user->id && !$msg->is_read) {
+                $groupedThreads[$canonicalThreadId]['unread_count']++;
+            }
         }
 
-        // Sort by last message created_at (most recent first)
+        $threadData = array_values($groupedThreads);
+
         usort($threadData, function ($a, $b) {
             $timeA = strtotime($a['last_message']['created_at']);
             $timeB = strtotime($b['last_message']['created_at']);
-            return $timeB - $timeA; // Descending order (newest first)
+            return $timeB - $timeA;
         });
 
         return response()->json([
@@ -250,4 +262,3 @@ class MessageController extends Controller
         ]);
     }
 }
-
