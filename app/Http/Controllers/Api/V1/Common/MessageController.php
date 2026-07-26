@@ -25,10 +25,26 @@ class MessageController extends Controller
         if ($request->has('thread_id')) {
             $threadId = $request->thread_id;
             
-            // If thread_id matches format thread-X-Y, get all messages between participant X and participant Y
+            // Mark all unread messages in this thread for this recipient as read
             if (preg_match('/^thread-(\d+)-(\d+)$/', $threadId, $matches)) {
                 $p1 = (int) $matches[1];
                 $p2 = (int) $matches[2];
+                Message::where('recipient_id', $user->id)
+                    ->where('is_read', false)
+                    ->where(function ($q) use ($threadId, $p1, $p2) {
+                        $q->where('thread_id', $threadId)
+                          ->orWhere(function ($sub) use ($p1, $p2) {
+                              $sub->where('sender_id', $p1)->where('recipient_id', $p2)
+                                ->orWhere(function ($s2) use ($p1, $p2) {
+                                    $s2->where('sender_id', $p2)->where('recipient_id', $p1);
+                                });
+                          });
+                    })
+                    ->update([
+                        'is_read' => true,
+                        'read_at' => now(),
+                    ]);
+
                 $query->where(function ($q) use ($threadId, $p1, $p2) {
                     $q->where('thread_id', $threadId)
                       ->orWhere(function ($q2) use ($p1, $p2) {
@@ -40,6 +56,14 @@ class MessageController extends Controller
                       });
                 });
             } else {
+                Message::where('recipient_id', $user->id)
+                    ->where('thread_id', $threadId)
+                    ->where('is_read', false)
+                    ->update([
+                        'is_read' => true,
+                        'read_at' => now(),
+                    ]);
+
                 $query->where('thread_id', $threadId);
             }
         }
