@@ -22,10 +22,7 @@ storage/framework/views/*
 !storage/framework/views/.gitignore
 
 # Environment variables & Local secrets
-.env
 .env.backup
-.env.production
-.env.local
 /auth.json
 
 # Testing & Cache
@@ -36,7 +33,6 @@ storage/framework/views/*
 .DS_Store
 Thumbs.db
 Desktop.ini
-/.vscode/
 /.idea/
 /.fleet/
 /.nova/
@@ -45,3 +41,4 @@ Desktop.ini
 *.sw?
 Homestead.json
 Homestead.yaml
+config.bat
